@@ -88,6 +88,11 @@ set_env RATE_LIMIT_MAX 600
 # Fila "image" sempre roda 1 por vez (ComfyUI so processa 1 workflow por
 # vez fisicamente) - explicito aqui pra nao depender do default do codigo.
 set_env IMAGE_WORKER_CONCURRENCY 1
+# .env.example vem com OLLAMA_DEFAULT_MODEL=llama3 (generico, exemplo) -
+# essa VPS so tem qwen2.5:3b instalado. Sem isso, qualquer chamada de
+# texto SEM task explicito (chat geral, "gerar descricao" etc) cai no
+# roteamento "default" e falha com "model 'llama3' not found" upstream.
+set_env OLLAMA_DEFAULT_MODEL qwen2.5:3b
 
 # 3. Modelos do ComfyUI + swap (unica coisa que ainda roda fora do Docker)
 echo '-- Preparando swap e baixando modelos do ComfyUI --'
@@ -109,10 +114,14 @@ done
 # portas 5432/6379 nativas de outros sistemas na VPS.
 docker compose --profile vps up -d --build
 
-# 5. Baixa o modelo de texto dentro do container ollama (a primeira vez
-# que sobe, o volume esta vazio).
-echo '-- Baixando modelo qwen2.5:3b dentro do container ollama (se ainda nao existir) --'
+# 5. Baixa os modelos dentro do container ollama (a primeira vez que sobe,
+# o volume esta vazio). Os 3 juntos cabem em disco tranquilo (~4GB) - o
+# OLLAMA_MAX_LOADED_MODELS=1 garante que so 1 fica carregado em RAM por
+# vez, trocando conforme a capacidade chamada (texto/visao/embed).
+echo '-- Baixando modelos dentro do container ollama (se ainda nao existirem) --'
 docker compose --profile vps exec -T ollama ollama pull qwen2.5:3b
+docker compose --profile vps exec -T ollama ollama pull moondream
+docker compose --profile vps exec -T ollama ollama pull nomic-embed-text
 
 # 6. Mescla o LCM-LoRA no checkpoint (uma vez so) - reaplicar o LoRA via
 # node a cada geracao custava ~30s fixos por chamada. Precisa do
