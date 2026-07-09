@@ -81,6 +81,13 @@ set_env REDIS_HOST_PORT 6380
 # pelo nome do servico, sem depender de host.docker.internal/firewall.
 set_env OLLAMA_BASE_URL_DOCKER http://ollama:11434
 set_env COMFYUI_BASE_URL_DOCKER http://comfyui:8188
+# .env.example vem com o limite conservador (120/min) - Lovable subindo
+# catalogo inteiro faz varias chamadas concorrentes por produto (texto +
+# imagem), 600/min (10/s) da folga real pra lotes de 50-60 itens.
+set_env RATE_LIMIT_MAX 600
+# Fila "image" sempre roda 1 por vez (ComfyUI so processa 1 workflow por
+# vez fisicamente) - explicito aqui pra nao depender do default do codigo.
+set_env IMAGE_WORKER_CONCURRENCY 1
 
 # 3. Modelos do ComfyUI + swap (unica coisa que ainda roda fora do Docker)
 echo '-- Preparando swap e baixando modelos do ComfyUI --'
