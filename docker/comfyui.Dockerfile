@@ -24,4 +24,8 @@ EXPOSE 8188
 # so de pesos) - foi o que causava OOM-kill mesmo com 4GB de limite no
 # container. --novram e incompativel com --cpu (argparse rejeita as duas
 # juntas) - --cpu ja implica o modo mais econômico de memoria disponivel.
-ENTRYPOINT ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188", "--cpu", "--disable-auto-launch", "--force-fp16", "--fp16-unet"]
+# --use-pytorch-cross-attention: sem essa flag o ComfyUI auto-seleciona a
+# atencao "sub-quadratic" (otimizada pra pouca memoria, mais lenta) - com
+# fp16 ja sobra memoria suficiente, entao a atencao nativa do PyTorch 2.x
+# (kernels oneDNN otimizados pra CPU) roda mais rapido por passo.
+ENTRYPOINT ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188", "--cpu", "--disable-auto-launch", "--force-fp16", "--fp16-unet", "--use-pytorch-cross-attention"]

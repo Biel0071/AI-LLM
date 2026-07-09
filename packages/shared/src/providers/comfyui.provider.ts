@@ -99,18 +99,24 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
   }
 
   private get lcmSamplerDefaults() {
-    return { steps: 6, cfg: 1.5, sampler_name: 'lcm', scheduler: 'sgm_uniform' };
+    // 4 passos (nao 6) - LCM-LoRA converge bem com 4 e cada passo custa
+    // ~13s em CPU nesta VPS; 512x512 (nao 1024, o default "normal" da
+    // interface) porque em CPU o custo escala muito mais que linear com
+    // resolucao - 1024x1024 levaria minutos, inviavel pro caso de uso de
+    // catalogo de produto que precisa de resposta rapida.
+    return { steps: 4, cfg: 1.5, sampler_name: 'lcm', scheduler: 'sgm_uniform', width: 512, height: 512 };
   }
 
   private buildTxt2Img(input: GenerateImageInput, checkpoint: string): WorkflowGraph {
     const seed = input.seed ?? Math.floor(Math.random() * 2 ** 32);
+    const lcmDefaults = this.config.lcmLoraName ? this.lcmSamplerDefaults : null;
     const graph: WorkflowGraph = {
       '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpoint } },
       '4': {
         class_type: 'EmptyLatentImage',
         inputs: {
-          width: input.width ?? 1024,
-          height: input.height ?? 1024,
+          width: input.width ?? lcmDefaults?.width ?? 1024,
+          height: input.height ?? lcmDefaults?.height ?? 1024,
           batch_size: input.batch ?? 1,
         },
       },
@@ -120,7 +126,6 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
     const { modelRef, clipRef } = this.applyLcmLora(graph, input.steps);
     graph['2'] = { class_type: 'CLIPTextEncode', inputs: { text: input.prompt, clip: clipRef } };
     graph['3'] = { class_type: 'CLIPTextEncode', inputs: { text: input.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT, clip: clipRef } };
-    const lcm = this.config.lcmLoraName ? this.lcmSamplerDefaults : null;
     graph['5'] = {
       class_type: 'KSampler',
       inputs: {
@@ -129,10 +134,10 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
         negative: ['3', 0],
         latent_image: ['4', 0],
         seed,
-        steps: input.steps ?? lcm?.steps ?? 25,
-        cfg: input.cfgScale ?? lcm?.cfg ?? 7,
-        sampler_name: lcm?.sampler_name ?? 'dpmpp_2m',
-        scheduler: lcm?.scheduler ?? 'karras',
+        steps: input.steps ?? lcmDefaults?.steps ?? 25,
+        cfg: input.cfgScale ?? lcmDefaults?.cfg ?? 7,
+        sampler_name: lcmDefaults?.sampler_name ?? 'dpmpp_2m',
+        scheduler: lcmDefaults?.scheduler ?? 'karras',
         denoise: 1,
       },
     };
