@@ -226,9 +226,24 @@ export const seoProcessor: ProcessorFn = async (job, registry) => {
   };
   const language = data.language ?? 'pt-BR';
   const prompt = [
-    `Voce e um especialista em SEO para e-commerce. Idioma: ${language}.`,
+    `Voce e um especialista em SEO e catalogacao para e-commerce. Idioma: ${language}.`,
     `Produto: ${data.product}`,
-    data.description ? `Detalhes: ${data.description}` : '',
+    data.description ? `Detalhes fornecidos: ${data.description}` : '',
+    '',
+    'Use seu conhecimento geral sobre este tipo de produto (material tipico, ' +
+      'uso, publico-alvo, caracteristicas comuns da categoria) para escrever ' +
+      'uma descricao completa e precisa - nao invente especificacoes tecnicas ' +
+      'exclusivas (numero de serie, medidas exatas, etc.) que nao foram ' +
+      'informadas, mas enriqueca com o que e tipicamente verdade sobre ' +
+      'produtos dessa categoria.',
+    '',
+    'Regra de tamanhos (aplique com criterio, categoria por categoria):',
+    '- Roupas, calcados e acessorios vestiveis (camisas, calcas, vestidos, ' +
+      'jaquetas, tenis, sapatos, etc.) TEM variacao de tamanho -> preencha ' +
+      '"hasVariableSizes": true e "sizes" com as opcoes tipicas da categoria ' +
+      '(ex: ["PP","P","M","G","GG"] para roupas, numeracao para calcados).',
+    '- Bolsas, acessorios nao vestiveis, eletronicos, moveis, decoracao, etc. ' +
+      'NAO tem variacao de tamanho -> "hasVariableSizes": false e "sizes": null.',
     '',
     'Gere um JSON valido (sem markdown, sem comentarios) com exatamente estas chaves:',
     '{',
@@ -238,6 +253,8 @@ export const seoProcessor: ProcessorFn = async (job, registry) => {
     '  "metaDescription": "meta description (max 155 caracteres)",',
     '  "slug": "slug-url-amigavel",',
     '  "category": "categoria sugerida",',
+    '  "hasVariableSizes": true ou false,',
+    '  "sizes": ["P", "M", "G"] ou null,',
     '  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],',
     '  "summary": "resumo em 1 frase",',
     '  "adCopy": "texto curto para anuncio"',
