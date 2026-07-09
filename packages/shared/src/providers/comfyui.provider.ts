@@ -99,12 +99,13 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
   }
 
   private get lcmSamplerDefaults() {
-    // 4 passos (nao 6) - LCM-LoRA converge bem com 4 e cada passo custa
-    // ~13s em CPU nesta VPS; 512x512 (nao 1024, o default "normal" da
-    // interface) porque em CPU o custo escala muito mais que linear com
-    // resolucao - 1024x1024 levaria minutos, inviavel pro caso de uso de
-    // catalogo de produto que precisa de resposta rapida.
-    return { steps: 4, cfg: 1.5, sampler_name: 'lcm', scheduler: 'sgm_uniform', width: 512, height: 512 };
+    // 3 passos (nao 6) - LCM-LoRA ainda converge de forma aceitavel com 3
+    // e cada passo custa ~10s em CPU nesta VPS (com atencao pytorch
+    // nativa); 512x512 (nao 1024, o default "normal" da interface) porque
+    // em CPU o custo escala muito mais que linear com resolucao - 1024x1024
+    // levaria minutos, inviavel pro caso de uso de catalogo de produto que
+    // precisa de resposta rapida (<1min).
+    return { steps: 3, cfg: 1.5, sampler_name: 'lcm', scheduler: 'sgm_uniform', width: 512, height: 512 };
   }
 
   private buildTxt2Img(input: GenerateImageInput, checkpoint: string): WorkflowGraph {
