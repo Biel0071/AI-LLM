@@ -102,12 +102,16 @@ log "baixando modelo qwen2.5:3b (unico modelo de texto - cabe na RAM disponivel)
 ollama pull qwen2.5:3b
 
 # ---------- ComfyUI ----------
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  log "instalando $PYTHON_BIN + dependencias de sistema"
+  $PKG_INSTALL $PY_PKGS git $VENV_PKG "$GL_PKG" >/dev/null
+fi
+
 COMFY_DIR="/opt/comfyui"
 if [ -d "$COMFY_DIR" ]; then
   log "ComfyUI ja clonado em $COMFY_DIR"
 else
   log "clonando ComfyUI em $COMFY_DIR"
-  $PKG_INSTALL $PY_PKGS git $VENV_PKG "$GL_PKG" >/dev/null
   git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git "$COMFY_DIR"
 fi
 
