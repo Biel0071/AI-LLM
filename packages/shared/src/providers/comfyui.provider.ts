@@ -22,11 +22,23 @@ export interface ComfyUIConfig {
   timeoutMs?: number;
   /**
    * LCM-LoRA (arquivo .safetensors em models/loras/) aplicado ao MESMO
-   * checkpoint configurado - reduz de ~20-25 passos para 4-8, essencial
-   * pra rodar em CPU (VPS sem GPU). Quando definido, vira o padrao para
-   * todas as geracoes a menos que o chamador informe "steps" explicito.
+   * checkpoint configurado via node LoraLoader a cada geracao - reduz de
+   * ~20-25 passos para poucos, essencial pra rodar em CPU (VPS sem GPU).
+   * So use isso se o checkpoint configurado AINDA NAO tem o LCM-LoRA
+   * mesclado (ver lcmMode abaixo para o caso ja mesclado - mais rapido,
+   * pula o node LoraLoader a cada chamada).
    */
   lcmLoraName?: string;
+  /**
+   * Ativa os defaults de sampler/steps/cfg/resolucao do regime LCM
+   * (poucos passos, cfg baixo, resolucao menor) sem depender de
+   * lcmLoraName - usado quando o checkpoint configurado JA TEM o
+   * LCM-LoRA mesclado permanentemente (via node CheckpointSave do
+   * proprio ComfyUI), evitando o custo de reaplicar o LoRA a cada
+   * geracao. Setado automaticamente como true quando lcmLoraName esta
+   * definido, mas pode ser ligado independente dele.
+   */
+  lcmMode?: boolean;
 }
 
 export interface MultiAngleInput {
@@ -98,6 +110,10 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
     return { modelRef: ['20', 0], clipRef: ['20', 1] };
   }
 
+  private get isLcmMode(): boolean {
+    return Boolean(this.config.lcmLoraName || this.config.lcmMode);
+  }
+
   private get lcmSamplerDefaults() {
     // 3 passos (nao 6) - LCM-LoRA ainda converge de forma aceitavel com 3
     // e cada passo custa ~10s em CPU nesta VPS (com atencao pytorch
@@ -110,7 +126,7 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
 
   private buildTxt2Img(input: GenerateImageInput, checkpoint: string): WorkflowGraph {
     const seed = input.seed ?? Math.floor(Math.random() * 2 ** 32);
-    const lcmDefaults = this.config.lcmLoraName ? this.lcmSamplerDefaults : null;
+    const lcmDefaults = this.isLcmMode ? this.lcmSamplerDefaults : null;
     const graph: WorkflowGraph = {
       '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpoint } },
       '4': {
@@ -157,7 +173,7 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
     const { modelRef, clipRef } = this.applyLcmLora(graph, input.steps);
     graph['2'] = { class_type: 'CLIPTextEncode', inputs: { text: input.prompt, clip: clipRef } };
     graph['3'] = { class_type: 'CLIPTextEncode', inputs: { text: input.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT, clip: clipRef } };
-    const lcm = this.config.lcmLoraName ? this.lcmSamplerDefaults : null;
+    const lcm = this.isLcmMode ? this.lcmSamplerDefaults : null;
     graph['5'] = {
       class_type: 'KSampler',
       inputs: {

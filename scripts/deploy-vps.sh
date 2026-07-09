@@ -107,6 +107,12 @@ docker compose --profile vps up -d --build
 echo '-- Baixando modelo qwen2.5:3b dentro do container ollama (se ainda nao existir) --'
 docker compose --profile vps exec -T ollama ollama pull qwen2.5:3b
 
+# 6. Mescla o LCM-LoRA no checkpoint (uma vez so) - reaplicar o LoRA via
+# node a cada geracao custava ~30s fixos por chamada. Precisa do
+# container comfyui ja rodando (passo 4 acima), por isso vem depois.
+bash scripts/vps-merge-lcm-checkpoint.sh
+docker compose --profile vps up -d api worker
+
 echo
 echo '== Deploy concluido =='
 echo '  API:       http://SEU_IP:3000  (Swagger em /docs)'

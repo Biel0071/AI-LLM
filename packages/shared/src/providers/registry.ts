@@ -222,6 +222,7 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
         zero123Checkpoint: env.COMFYUI_ZERO123_CHECKPOINT,
         timeoutMs: env.COMFYUI_TIMEOUT_MS ? Number(env.COMFYUI_TIMEOUT_MS) : undefined,
         lcmLoraName: env.COMFYUI_LCM_LORA,
+        lcmMode: env.COMFYUI_LCM_MODE === 'true',
       }),
     );
   }
