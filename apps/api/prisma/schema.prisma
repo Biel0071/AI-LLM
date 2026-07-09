@@ -1,0 +1,298 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Multi-tenant ----------
+
+model Tenant {
+  id           String    @id @default(cuid())
+  name         String
+  slug         String    @unique
+  active       Boolean   @default(true)
+  // Configuracao por loja/tenant
+  defaultTextProvider  String?
+  defaultImageProvider String?
+  defaultModel         String?
+  monthlyTokenLimit    BigInt?
+  monthlyRequestLimit  Int?
+  rateLimitPerMinute   Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  users     User[]
+  apiKeys   ApiKey[]
+  projects  Project[]
+  jobs      Job[]
+  logs      RequestLog[]
+  usage     Usage[]
+  images    Image[]
+  prompts   Prompt[]
+  credits   Credit[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  domain      String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  apiKeys ApiKey[]
+
+  @@index([tenantId])
+}
+
+// ---------- Usuarios / Auth ----------
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  email        String   @unique
+  name         String?
+  passwordHash String
+  role         String   @default("user") // admin | user
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  auditLogs AuditLog[]
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  tenantId    String
+  projectId   String?
+  name        String
+  keyHash     String    @unique
+  prefix      String
+  active      Boolean   @default(true)
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  scopes      String    @default("text,chat,image,video,vision,embed,ocr,workflow")
+  environment String    @default("live")
+  createdAt   DateTime  @default(now())
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([projectId])
+}
+
+// ---------- Providers / Modelos ----------
+
+model ProviderConfig {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  enabled   Boolean  @default(true)
+  baseUrl   String?
+  settings  Json?
+  updatedAt DateTime @updatedAt
+
+  models ModelConfig[]
+}
+
+model ModelConfig {
+  id               String  @id @default(cuid())
+  providerId       String
+  modelId          String
+  displayName      String?
+  capability       String  @default("text")
+  costPer1kInput   Float   @default(0)
+  costPer1kOutput  Float   @default(0)
+  enabled          Boolean @default(true)
+
+  provider ProviderConfig @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, modelId])
+}
+
+// ---------- Jobs / Filas ----------
+
+model Job {
+  id          String    @id @default(cuid())
+  tenantId    String?
+  projectId   String?
+  queue       String
+  type        String
+  status      String    @default("waiting") // waiting | active | completed | failed
+  priority    Int       @default(5)
+  payload     Json
+  result      Json?
+  error       String?
+  attempts    Int       @default(0)
+  provider    String?
+  model       String?
+  durationMs  Int?
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([projectId, status])
+  @@index([queue, status])
+}
+
+// ---------- Logs / Uso / Custos ----------
+
+model RequestLog {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  capability   String
+  provider     String
+  model        String
+  cached       Boolean  @default(false)
+  success      Boolean  @default(true)
+  errorCode    String?
+  durationMs   Int
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  totalTokens      Int @default(0)
+  cost         Float    @default(0)
+  createdAt    DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([provider, createdAt])
+}
+
+model Usage {
+  id           String   @id @default(cuid())
+  tenantId     String
+  day          DateTime @db.Date
+  capability   String
+  provider     String
+  requests     Int      @default(0)
+  cachedHits   Int      @default(0)
+  totalTokens  BigInt   @default(0)
+  cost         Float    @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, day, capability, provider])
+  @@index([tenantId, day])
+}
+
+model Credit {
+  id        String   @id @default(cuid())
+  tenantId  String
+  amount    Float
+  reason    String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ---------- Cache inteligente ----------
+
+model CacheEntry {
+  id         String   @id @default(cuid())
+  hash       String   @unique
+  capability String
+  provider   String
+  model      String
+  prompt     String
+  response   Json
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  durationMs Int      @default(0)
+  hits       Int      @default(0)
+  createdAt  DateTime @default(now())
+  lastHitAt  DateTime @default(now())
+
+  @@index([provider, model])
+}
+
+// ---------- Conteudo ----------
+
+model Prompt {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  name      String
+  template  String
+  category  String?
+  favorite  Boolean  @default(false)
+  shared    Boolean  @default(false)
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model Image {
+  id         String   @id @default(cuid())
+  tenantId   String?
+  projectId  String?
+  jobId      String?
+  provider   String
+  model      String
+  prompt     String?
+  kind       String   @default("generation") // generation | upscale | background_removal | mockup
+  url        String?
+  base64Size Int?
+  seed       BigInt?
+  createdAt  DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([projectId, createdAt])
+}
+
+model ImageWorkflow {
+  id        String   @id @default(cuid())
+  name      String
+  provider  String   @default("comfyui")
+  graph     Json
+  enabled   Boolean  @default(true)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, name])
+  @@index([provider, enabled])
+}
+// ---------- Workers / Auditoria ----------
+
+model WorkerNode {
+  id            String   @id @default(cuid())
+  hostname      String
+  queues        String
+  concurrency   Int      @default(1)
+  startedAt     DateTime @default(now())
+  lastHeartbeat DateTime @default(now())
+
+  @@unique([hostname, queues])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  target    String?
+  details   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}

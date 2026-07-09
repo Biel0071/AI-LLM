@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Platform — Dashboard</title>
+  <link rel="stylesheet" href="app.css?v=13" />
+</head>
+<body>
+  <div id="login" class="login hidden">
+    <form id="login-form" class="login-card">
+      <h1>AI Platform</h1>
+      <p class="muted">Painel administrativo</p>
+      <label>Email ou usuário
+        <input type="text" id="login-email" value="admin" required autocomplete="username" />
+      </label>
+      <label>Senha
+        <span class="password-field">
+          <input type="password" id="login-password" required autocomplete="current-password" />
+          <button type="button" id="toggle-password" class="password-toggle" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+        </span>
+      </label>
+      <button type="submit">Entrar</button>
+      <p id="login-error" class="error hidden"></p>
+    </form>
+  </div>
+
+  <div id="shell" class="shell hidden">
+    <aside class="sidebar">
+      <h2>AI Platform</h2>
+      <nav class="nav-groups">
+        <a class="nav-primary" href="#/home"><span>▦</span> Dashboard</a>
+        <section class="nav-group" data-group="projects"><button class="nav-group-toggle"><span>◫ Projetos</span><b>⌄</b></button><div class="nav-submenu"><a href="#/projects">Projetos</a><a href="#/keys">API Keys</a><a href="#/workflow-manager">Workflows</a><a href="#/image-history">Histórico</a></div></section>
+        <section class="nav-group" data-group="ai"><button class="nav-group-toggle"><span>✦ IA</span><b>⌄</b></button><div class="nav-submenu"><a href="#/providers">Providers</a><a href="#/ollama">Ollama</a><a href="#/comfy-wizard">ComfyUI</a><a href="#/models">Modelos</a><a href="#/prompts">Prompts</a></div></section>
+        <section class="nav-group" data-group="gateway"><button class="nav-group-toggle"><span>⇄ API Gateway</span><b>⌄</b></button><div class="nav-submenu"><a href="#/base-url">Base URL</a><a href="#/sdk">SDK</a><a href="#/lovable">Integração Lovable</a><a href="#/integrations">Exemplos</a></div></section>
+        <a class="nav-primary" href="#/logs"><span>≡</span> Logs</a>
+        <section class="nav-group" data-group="system"><button class="nav-group-toggle"><span>⚙ Sistema</span><b>⌄</b></button><div class="nav-submenu"><a href="#/users">Usuários</a><a href="#/security">Segurança</a><a href="#/settings">Configurações</a><a href="#/backup">Backup</a></div></section>
+      </nav>
+      <button id="logout" class="ghost">Sair</button>
+    </aside>
+    <main id="content"></main>
+  </div>
+
+  <script src="app.js?v=12"></script>
+</body>
+</html>

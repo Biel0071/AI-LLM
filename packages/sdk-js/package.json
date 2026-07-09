@@ -1,0 +1,10 @@
+{
+  "name": "@ai-platform/sdk-js",
+  "version": "1.0.0",
+  "description": "SDK JavaScript (zero dependencias) da AI Platform - Node 18+, browsers e Lovable",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  }
+}

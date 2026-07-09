@@ -1,0 +1,36 @@
+{
+  "name": "ai-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Platform Enterprise - AI Gateway centralizado para Lovable, SaaS, CRM, ERP e aplicacoes multi-tenant",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "workspaces": [
+    "packages/shared",
+    "packages/sdk-ts",
+    "packages/sdk-js",
+    "apps/api",
+    "apps/worker"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/shared && npm run build -w packages/sdk-ts && npm run build -w apps/api && npm run build -w apps/worker",
+    "dev:api": "npm run build -w packages/shared && npm run dev -w apps/api",
+    "dev:worker": "npm run build -w packages/shared && npm run dev -w apps/worker",
+    "test": "npm run test -w apps/api",
+    "lint": "eslint .",
+    "format": "prettier --write \"**/*.{ts,js,json,md}\"",
+    "prisma:generate": "npm run prisma:generate -w apps/api",
+    "prisma:migrate": "npm run prisma:migrate -w apps/api",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "eslint": "^9.9.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.2",
+    "typescript-eslint": "^8.5.0"
+  }
+}

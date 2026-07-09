@@ -1,0 +1,25 @@
+{
+  "name": "@ai-platform/worker",
+  "version": "1.0.0",
+  "description": "AI Platform - Workers de fila (BullMQ)",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@ai-platform/shared": "1.0.0",
+    "@prisma/client": "^5.20.0",
+    "bullmq": "^5.12.0",
+    "ioredis": "^5.4.1",
+    "pino": "^9.4.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.4",
+    "pino-pretty": "^11.2.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.2"
+  }
+}
