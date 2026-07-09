@@ -69,6 +69,15 @@ set_env GPU_MAX_CONCURRENT 1
 # nativamente por outro sistema nesta VPS (ver cabecalho do script).
 set_env POSTGRES_HOST_PORT 5433
 set_env REDIS_HOST_PORT 6380
+# Em Linux nativo (Docker Engine, nao Docker Desktop), a entry magica
+# "host.docker.internal:host-gateway" resolve para o gateway da bridge
+# PADRAO do daemon (docker0, 172.17.0.1), nao para o gateway da rede
+# custom deste projeto - os containers nao tem rota ate la e a chamada
+# pro Ollama/ComfyUI falha com "fetch failed". docker-compose.yml fixa a
+# subnet dessa rede em 172.19.0.0/16, entao apontamos direto pro gateway
+# dela (172.19.0.1), que os containers alcançam normalmente.
+set_env OLLAMA_BASE_URL_DOCKER http://172.19.0.1:11434
+set_env COMFYUI_BASE_URL_DOCKER http://172.19.0.1:8188
 
 # 3. Ollama + ComfyUI nativos (sem GPU nesta VPS - rodar em container so
 #    adicionaria overhead sem ganho nenhum)
@@ -85,8 +94,8 @@ echo '  API:       http://SEU_IP:3000  (Swagger em /docs)'
 echo '  Dashboard: http://SEU_IP:8080'
 echo '  Postgres:  host 5433 -> container 5432 (nao usa a 5432 nativa da VPS)'
 echo '  Redis:     host 6380 -> container 6379 (nao usa a 6379 nativa da VPS)'
-echo '  Ollama:    127.0.0.1:11434 (nativo, so acessivel pelos containers)'
-echo '  ComfyUI:   127.0.0.1:8188 (nativo, so acessivel pelos containers)'
+echo '  Ollama:    porta 11434 (nativo, bloqueado externamente pelo firewalld)'
+echo '  ComfyUI:   porta 8188 (nativo, bloqueado externamente pelo firewalld)'
 echo
 echo 'Recomendado: coloque um proxy TLS na frente (Traefik/Caddy/nginx + certbot).'
 echo 'Exemplo Traefik: docs/DEPLOY.md'

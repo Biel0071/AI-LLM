@@ -138,6 +138,21 @@ services:
     depends_on:
       - prometheus
 
+networks:
+  default:
+    ipam:
+      config:
+        # Subnet fixa (nao deixa o Docker auto-alocar) - em Linux nativo,
+        # "host.docker.internal:host-gateway" resolve para o gateway da
+        # bridge PADRAO do daemon (172.17.0.1 do docker0), nao para o
+        # gateway desta rede custom do projeto. Com subnet fixa aqui, o
+        # gateway (172.19.0.1) fica previsivel entre "docker compose down/up",
+        # permitindo apontar OLLAMA_BASE_URL_DOCKER/COMFYUI_BASE_URL_DOCKER
+        # direto pra ele na VPS (ver scripts/deploy-vps.sh) sem depender do
+        # host-gateway quebrado. Em Windows/Mac (Docker Desktop) isso nao
+        # afeta nada - host.docker.internal ja funciona nativamente la.
+        - subnet: 172.19.0.0/16
+
 volumes:
   pgdata:
   redisdata:
