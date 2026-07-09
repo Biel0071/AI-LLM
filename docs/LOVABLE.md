@@ -74,11 +74,41 @@ const job = await ai.waitJob(jobId);
 const { result } = await ai.image({
   prompt: `professional product photography, ${produto.nome}, pure white background, studio lighting, 8k`,
   negativePrompt: 'blurry, watermark, text, low quality',
-  width: 1024,
-  height: 1024,
+  // 512x512 (nao passe width/height maior sem necessidade): na VPS sem
+  // GPU, cada pixel a mais custa tempo real - 1024x1024 pode levar varios
+  // minutos. O default de 512x512 (quando nao informado) ja fica na
+  // faixa de ~1min por imagem.
 });
 const imagemBase64 = result.images[0].base64;
 ```
+
+### Catálogo inteiro em lote (fila, não bloqueia)
+
+Pra subir um catálogo com várias fotos, use `createJob` (fila BullMQ) em
+vez de `ai.image` direto - a chamada retorna na hora com um `jobId`, e o
+worker processa uma imagem de cada vez em background (a VPS não tem GPU,
+então rodar várias imagens "ao mesmo tempo" só criaria fila falsa e
+estouraria timeout). Cada produto vira 1 job:
+
+```ts
+const jobs = await Promise.all(
+  produtos.map((p) =>
+    ai.createJob({
+      type: 'image',
+      payload: { prompt: `professional product photo, ${p.nome}, white background` },
+    }),
+  ),
+);
+// Guarde jobs[i].jobId por produto e va consultando status depois -
+// nao precisa (nem deve) esperar tudo terminar antes de responder ao
+// usuario. GET /v1/jobs/:id (ou ai.waitJob(jobId) se quiser bloquear
+// um item especifico) devolve o status/resultado.
+```
+
+O sistema roda 24h na VPS (containers com `restart: unless-stopped` +
+Docker habilitado no boot) - se cair por qualquer motivo, sobe sozinho e
+a fila retoma os jobs pendentes de onde parou (Redis/Postgres persistem
+em volumes).
 
 ### Melhorar foto enviada pelo lojista (img2img)
 
