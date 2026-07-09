@@ -22,7 +22,6 @@ EXPOSE 8188
 # --force-fp16/--fp16-unet: sem isso, o ComfyUI faz upcast do UNet pra
 # fp32 em CPU, quase dobrando o uso de RAM (checkpoint de ~2GB vira ~4GB+
 # so de pesos) - foi o que causava OOM-kill mesmo com 4GB de limite no
-# container. --novram evita cache/preload alem do estritamente necessario
-# pra cada etapa, trocando um pouco de velocidade por memoria de pico
-# menor - essencial numa VPS com RAM tao curta.
-ENTRYPOINT ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188", "--cpu", "--disable-auto-launch", "--force-fp16", "--fp16-unet", "--novram"]
+# container. --novram e incompativel com --cpu (argparse rejeita as duas
+# juntas) - --cpu ja implica o modo mais econômico de memoria disponivel.
+ENTRYPOINT ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188", "--cpu", "--disable-auto-launch", "--force-fp16", "--fp16-unet"]
