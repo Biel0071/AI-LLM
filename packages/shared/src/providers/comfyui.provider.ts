@@ -20,6 +20,13 @@ export interface ComfyUIConfig {
   /** Checkpoint .ckpt do Stable Zero123 (novel view synthesis de verdade) */
   zero123Checkpoint?: string;
   timeoutMs?: number;
+  /**
+   * LCM-LoRA (arquivo .safetensors em models/loras/) aplicado ao MESMO
+   * checkpoint configurado - reduz de ~20-25 passos para 4-8, essencial
+   * pra rodar em CPU (VPS sem GPU). Quando definido, vira o padrao para
+   * todas as geracoes a menos que o chamador informe "steps" explicito.
+   */
+  lcmLoraName?: string;
 }
 
 export interface MultiAngleInput {
@@ -68,18 +75,37 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
 
   // ---------- Workflows ----------
 
+  /**
+   * Quando um LCM-LoRA esta configurado, insere um node LoraLoader entre o
+   * checkpoint e o resto do grafo - model/clip passam a sair do LoRA em vez
+   * de saírem direto do checkpoint. Sampler/scheduler/cfg/steps tambem
+   * mudam para o regime LCM (poucos passos, cfg baixo) quando o LoRA esta
+   * ativo, a menos que o chamador informe "steps" explicito (nesse caso
+   * respeita o pedido, assumindo que sabe o que esta fazendo).
+   */
+  private applyLcmLora(graph: WorkflowGraph, explicitSteps: number | undefined): { modelRef: [string, number]; clipRef: [string, number] } {
+    if (!this.config.lcmLoraName) return { modelRef: ['1', 0], clipRef: ['1', 1] };
+    graph['20'] = {
+      class_type: 'LoraLoader',
+      inputs: {
+        model: ['1', 0],
+        clip: ['1', 1],
+        lora_name: this.config.lcmLoraName,
+        strength_model: 1.0,
+        strength_clip: 1.0,
+      },
+    };
+    return { modelRef: ['20', 0], clipRef: ['20', 1] };
+  }
+
+  private get lcmSamplerDefaults() {
+    return { steps: 6, cfg: 1.5, sampler_name: 'lcm', scheduler: 'sgm_uniform' };
+  }
+
   private buildTxt2Img(input: GenerateImageInput, checkpoint: string): WorkflowGraph {
     const seed = input.seed ?? Math.floor(Math.random() * 2 ** 32);
-    return {
+    const graph: WorkflowGraph = {
       '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpoint } },
-      '2': {
-        class_type: 'CLIPTextEncode',
-        inputs: { text: input.prompt, clip: ['1', 1] },
-      },
-      '3': {
-        class_type: 'CLIPTextEncode',
-        inputs: { text: input.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT, clip: ['1', 1] },
-      },
       '4': {
         class_type: 'EmptyLatentImage',
         inputs: {
@@ -88,55 +114,60 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
           batch_size: input.batch ?? 1,
         },
       },
-      '5': {
-        class_type: 'KSampler',
-        inputs: {
-          model: ['1', 0],
-          positive: ['2', 0],
-          negative: ['3', 0],
-          latent_image: ['4', 0],
-          seed,
-          steps: input.steps ?? 25,
-          cfg: input.cfgScale ?? 7,
-          sampler_name: 'dpmpp_2m',
-          scheduler: 'karras',
-          denoise: 1,
-        },
-      },
       '6': { class_type: 'VAEDecode', inputs: { samples: ['5', 0], vae: ['1', 2] } },
-      '7': {
-        class_type: 'SaveImage',
-        inputs: { images: ['6', 0], filename_prefix: 'aiplatform' },
+      '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'aiplatform' } },
+    };
+    const { modelRef, clipRef } = this.applyLcmLora(graph, input.steps);
+    graph['2'] = { class_type: 'CLIPTextEncode', inputs: { text: input.prompt, clip: clipRef } };
+    graph['3'] = { class_type: 'CLIPTextEncode', inputs: { text: input.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT, clip: clipRef } };
+    const lcm = this.config.lcmLoraName ? this.lcmSamplerDefaults : null;
+    graph['5'] = {
+      class_type: 'KSampler',
+      inputs: {
+        model: modelRef,
+        positive: ['2', 0],
+        negative: ['3', 0],
+        latent_image: ['4', 0],
+        seed,
+        steps: input.steps ?? lcm?.steps ?? 25,
+        cfg: input.cfgScale ?? lcm?.cfg ?? 7,
+        sampler_name: lcm?.sampler_name ?? 'dpmpp_2m',
+        scheduler: lcm?.scheduler ?? 'karras',
+        denoise: 1,
       },
     };
+    return graph;
   }
 
   private buildImg2Img(input: GenerateImageInput, checkpoint: string, uploadedName: string): WorkflowGraph {
     const seed = input.seed ?? Math.floor(Math.random() * 2 ** 32);
-    return {
+    const graph: WorkflowGraph = {
       '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpoint } },
-      '2': { class_type: 'CLIPTextEncode', inputs: { text: input.prompt, clip: ['1', 1] } },
-      '3': { class_type: 'CLIPTextEncode', inputs: { text: input.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT, clip: ['1', 1] } },
       '8': { class_type: 'LoadImage', inputs: { image: uploadedName } },
       '9': { class_type: 'VAEEncode', inputs: { pixels: ['8', 0], vae: ['1', 2] } },
-      '5': {
-        class_type: 'KSampler',
-        inputs: {
-          model: ['1', 0],
-          positive: ['2', 0],
-          negative: ['3', 0],
-          latent_image: ['9', 0],
-          seed,
-          steps: input.steps ?? 25,
-          cfg: input.cfgScale ?? 7,
-          sampler_name: 'dpmpp_2m',
-          scheduler: 'karras',
-          denoise: input.denoise ?? 0.6,
-        },
-      },
       '6': { class_type: 'VAEDecode', inputs: { samples: ['5', 0], vae: ['1', 2] } },
       '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'aiplatform' } },
     };
+    const { modelRef, clipRef } = this.applyLcmLora(graph, input.steps);
+    graph['2'] = { class_type: 'CLIPTextEncode', inputs: { text: input.prompt, clip: clipRef } };
+    graph['3'] = { class_type: 'CLIPTextEncode', inputs: { text: input.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT, clip: clipRef } };
+    const lcm = this.config.lcmLoraName ? this.lcmSamplerDefaults : null;
+    graph['5'] = {
+      class_type: 'KSampler',
+      inputs: {
+        model: modelRef,
+        positive: ['2', 0],
+        negative: ['3', 0],
+        latent_image: ['9', 0],
+        seed,
+        steps: input.steps ?? lcm?.steps ?? 25,
+        cfg: input.cfgScale ?? lcm?.cfg ?? 7,
+        sampler_name: lcm?.sampler_name ?? 'dpmpp_2m',
+        scheduler: lcm?.scheduler ?? 'karras',
+        denoise: input.denoise ?? 0.6,
+      },
+    };
+    return graph;
   }
 
   /**
