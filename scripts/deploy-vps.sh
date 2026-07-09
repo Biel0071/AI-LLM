@@ -66,6 +66,9 @@ set_env() {
     echo "$1=$2" >> .env
   fi
 }
+# Checkpoint que realmente baixamos pra VPS (vps-install-native.sh) - o
+# .env.example por padrao aponta pro SDXL base, que nao existe aqui.
+set_env COMFYUI_CHECKPOINT DreamShaper_8_pruned.safetensors
 # LCM-LoRA ligado por padrao na VPS (CPU-only, precisa dos passos reduzidos)
 set_env COMFYUI_LCM_LORA lcm-lora-sdv1-5.safetensors
 # So 1 geracao de imagem por vez em CPU - RAM/CPU limitados nao aguentam paralelo
