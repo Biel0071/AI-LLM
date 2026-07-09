@@ -36,12 +36,18 @@ if command -v dnf >/dev/null 2>&1; then
   ZSTD_PKG="zstd"
   GL_PKG="mesa-libGL"
   VENV_PKG=""
+  # AlmaLinux/RHEL 9 vem com python3 = 3.9, mas o requirements.txt do ComfyUI
+  # (pacote "av") exige Python >=3.10 - usa o python3.11 do proprio AppStream.
+  PY_PKGS="python3.11 python3.11-pip"
+  PYTHON_BIN="python3.11"
 elif command -v apt-get >/dev/null 2>&1; then
   PKG_INSTALL="apt-get install -y -qq"
   apt-get update -qq
   ZSTD_PKG="zstd"
   GL_PKG="libgl1"
   VENV_PKG="python3-venv"
+  PY_PKGS="python3 python3-pip"
+  PYTHON_BIN="python3"
 else
   log "ERRO: nenhum gerenciador de pacotes suportado (dnf/apt-get) encontrado"
   exit 1
@@ -101,14 +107,14 @@ if [ -d "$COMFY_DIR" ]; then
   log "ComfyUI ja clonado em $COMFY_DIR"
 else
   log "clonando ComfyUI em $COMFY_DIR"
-  $PKG_INSTALL python3 python3-pip git $VENV_PKG "$GL_PKG" >/dev/null
+  $PKG_INSTALL $PY_PKGS git $VENV_PKG "$GL_PKG" >/dev/null
   git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git "$COMFY_DIR"
 fi
 
 cd "$COMFY_DIR"
 if [ ! -d venv ]; then
-  log "criando venv python"
-  python3 -m venv venv
+  log "criando venv python ($PYTHON_BIN)"
+  "$PYTHON_BIN" -m venv venv
 fi
 log "instalando dependencias (torch CPU-only - sem CUDA, imagem menor e mais rapido de instalar)"
 "$COMFY_DIR/venv/bin/pip" install --quiet --upgrade pip
