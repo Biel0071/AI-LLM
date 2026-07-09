@@ -18,3 +18,4 @@ __pycache__/
 logs/
 cloudflared-tunnel.log*
 tunnel-url.txt
+.claude/

@@ -43,16 +43,6 @@ if [ ! -f .env ]; then
   sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${JWT}|" .env
   sed -i "s|^DEFAULT_API_KEY=.*|DEFAULT_API_KEY=${APIKEY}|" .env
   sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=${PASS}|" .env
-  # LCM-LoRA ligado por padrao na VPS (CPU-only, precisa dos passos reduzidos)
-  if grep -q '^#COMFYUI_LCM_LORA=' .env; then
-    sed -i "s|^#COMFYUI_LCM_LORA=.*|COMFYUI_LCM_LORA=lcm-lora-sdv1-5.safetensors|" .env
-  elif ! grep -q '^COMFYUI_LCM_LORA=' .env; then
-    echo 'COMFYUI_LCM_LORA=lcm-lora-sdv1-5.safetensors' >> .env
-  fi
-  # So 1 geracao de imagem por vez em CPU - RAM/CPU limitados nao aguentam paralelo
-  if grep -q '^GPU_MAX_CONCURRENT=' .env; then
-    sed -i "s|^GPU_MAX_CONCURRENT=.*|GPU_MAX_CONCURRENT=1|" .env
-  fi
   echo '--------------------------------------------------'
   echo "  ADMIN_PASSWORD:  ${PASS}"
   echo "  DEFAULT_API_KEY: ${APIKEY}"
@@ -60,13 +50,34 @@ if [ ! -f .env ]; then
   echo '--------------------------------------------------'
 fi
 
+# 2b. Ajustes idempotentes no .env (rodam sempre, mesmo em .env ja existente
+# de uma execucao anterior) - usa append-se-ausente em vez de sed, porque
+# .env.example pode nao ter a chave ainda.
+set_env() {
+  # $1=chave $2=valor
+  if grep -q "^$1=" .env; then
+    sed -i "s|^$1=.*|$1=$2|" .env
+  else
+    echo "$1=$2" >> .env
+  fi
+}
+# LCM-LoRA ligado por padrao na VPS (CPU-only, precisa dos passos reduzidos)
+set_env COMFYUI_LCM_LORA lcm-lora-sdv1-5.safetensors
+# So 1 geracao de imagem por vez em CPU - RAM/CPU limitados nao aguentam paralelo
+set_env GPU_MAX_CONCURRENT 1
+# Portas do host para postgres/redis - a 5432/6379 padrao ja esta em uso
+# nativamente por outro sistema nesta VPS (ver cabecalho do script).
+set_env POSTGRES_HOST_PORT 5433
+set_env REDIS_HOST_PORT 6380
+
 # 3. Ollama + ComfyUI nativos (sem GPU nesta VPS - rodar em container so
 #    adicionaria overhead sem ganho nenhum)
 echo '-- Instalando Ollama + ComfyUI nativos --'
 bash scripts/vps-install-native.sh
 
-# 4. Stack Docker - override de portas pra nao brigar com outros sistemas
-docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d --build
+# 4. Stack Docker - POSTGRES_HOST_PORT/REDIS_HOST_PORT no .env evitam
+# conflito com as portas 5432/6379 nativas de outros sistemas na VPS.
+docker compose up -d --build
 
 echo
 echo '== Deploy concluido =='
