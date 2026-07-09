@@ -71,8 +71,14 @@ set_env() {
 set_env COMFYUI_CHECKPOINT DreamShaper_8_pruned.safetensors
 # LCM-LoRA ligado por padrao na VPS (CPU-only, precisa dos passos reduzidos)
 set_env COMFYUI_LCM_LORA lcm-lora-sdv1-5.safetensors
-# So 1 geracao de imagem por vez em CPU - RAM/CPU limitados nao aguentam paralelo
-set_env GPU_MAX_CONCURRENT 1
+# GPU_MAX_CONCURRENT=1 bloqueava TEXTO atras de QUALQUER imagem em andamento
+# (semaforo global compartilhado entre as duas capacidades) - Ollama e
+# ComfyUI sao containers SEPARADOS aqui (cada um com seu proprio limite de
+# memoria via Docker), diferente da maquina local com 1 GPU fisica
+# compartilhada (onde faz sentido serializar). IMAGE_WORKER_CONCURRENCY=1
+# ja garante que so 1 imagem roda por vez na fila - nao precisa tambem
+# travar texto atras dela.
+set_env GPU_MAX_CONCURRENT 3
 # Portas do host para postgres/redis - a 5432/6379 padrao ja esta em uso
 # nativamente por outro sistema nesta VPS (ver cabecalho do script).
 set_env POSTGRES_HOST_PORT 5433
