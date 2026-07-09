@@ -157,8 +157,10 @@ services:
       OLLAMA_KEEP_ALIVE: 5m
     volumes:
       - ollamadata:/root/.ollama
+    # Imagem oficial nao tem wget/curl - usa o proprio binario do ollama,
+    # que so retorna 0 se conseguir falar com o servidor local.
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:11434/api/tags']
+      test: ['CMD', 'ollama', 'list']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -170,14 +172,18 @@ services:
       dockerfile: docker/comfyui.Dockerfile
     profiles: [vps]
     restart: unless-stopped
-    mem_limit: 2560m
+    # SD1.5 em float32 (checkpoint + VAE + CLIP + buffers de inferencia)
+    # passa de 2.5GB em CPU durante a geracao - com o limite mais baixo o
+    # container levava OOM-kill no meio da 1a geracao de imagem.
+    mem_limit: 4g
     volumes:
       # Reusa os arquivos ja baixados pelo instalador nativo antigo (evita
       # rebaixar ~2GB de checkpoint) - ajuste o caminho se mudar de VPS.
       - /opt/comfyui-models/checkpoints:/app/models/checkpoints
       - /opt/comfyui-models/loras:/app/models/loras
+    # Imagem (python:3.11-slim) nao tem wget/curl - usa o proprio python.
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8188/system_stats']
+      test: ['CMD', 'python3', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8188/system_stats", timeout=3)']
       interval: 10s
       timeout: 5s
       retries: 10
