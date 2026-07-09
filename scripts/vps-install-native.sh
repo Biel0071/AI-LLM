@@ -122,7 +122,12 @@ if [ ! -d venv ]; then
 fi
 log "instalando dependencias (torch CPU-only - sem CUDA, imagem menor e mais rapido de instalar)"
 "$COMFY_DIR/venv/bin/pip" install --quiet --upgrade pip
-"$COMFY_DIR/venv/bin/pip" install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# torchaudio tambem precisa vir do indice CPU explicitamente - o
+# requirements.txt do ComfyUI lista "torchaudio" sem pin, e se ele nao
+# estiver ja satisfeito nesse momento, o pip -r requirements.txt busca a
+# build padrao (CUDA) do PyPI, que falha em runtime nesta VPS sem GPU
+# (libcudart.so.13 nao existe) mesmo rodando com --cpu.
+"$COMFY_DIR/venv/bin/pip" install --quiet torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 "$COMFY_DIR/venv/bin/pip" install --quiet -r requirements.txt
 
 mkdir -p "$COMFY_DIR/models/loras"
