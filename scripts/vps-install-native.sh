@@ -29,6 +29,24 @@ set -euo pipefail
 
 log() { echo "[vps-install] $*"; }
 
+# Detecta o gerenciador de pacotes (essa VPS e AlmaLinux/RHEL - dnf - mas o
+# script fica portavel caso rode em Debian/Ubuntu tambem).
+if command -v dnf >/dev/null 2>&1; then
+  PKG_INSTALL="dnf install -y -q"
+  ZSTD_PKG="zstd"
+  GL_PKG="mesa-libGL"
+  VENV_PKG=""
+elif command -v apt-get >/dev/null 2>&1; then
+  PKG_INSTALL="apt-get install -y -qq"
+  apt-get update -qq
+  ZSTD_PKG="zstd"
+  GL_PKG="libgl1"
+  VENV_PKG="python3-venv"
+else
+  log "ERRO: nenhum gerenciador de pacotes suportado (dnf/apt-get) encontrado"
+  exit 1
+fi
+
 # ---------- Swap (rede de seguranca de memoria) ----------
 if [ -f /swapfile ] || swapon --show | grep -q .; then
   log "swap ja existe, pulando"
@@ -48,6 +66,11 @@ else
 fi
 
 # ---------- Ollama ----------
+if ! command -v zstd >/dev/null 2>&1; then
+  log "instalando zstd (requerido pelo instalador do ollama)"
+  $PKG_INSTALL "$ZSTD_PKG"
+fi
+
 if command -v ollama >/dev/null 2>&1; then
   log "ollama ja instalado ($(ollama --version 2>&1 | head -1))"
 else
@@ -78,8 +101,7 @@ if [ -d "$COMFY_DIR" ]; then
   log "ComfyUI ja clonado em $COMFY_DIR"
 else
   log "clonando ComfyUI em $COMFY_DIR"
-  apt-get update -qq
-  apt-get install -y -qq python3 python3-venv python3-pip git libgl1 >/dev/null
+  $PKG_INSTALL python3 python3-pip git $VENV_PKG "$GL_PKG" >/dev/null
   git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git "$COMFY_DIR"
 fi
 
