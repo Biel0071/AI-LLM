@@ -138,22 +138,53 @@ services:
     depends_on:
       - prometheus
 
-networks:
-  default:
-    ipam:
-      config:
-        # Subnet fixa (nao deixa o Docker auto-alocar) - em Linux nativo,
-        # "host.docker.internal:host-gateway" resolve para o gateway da
-        # bridge PADRAO do daemon (172.17.0.1 do docker0), nao para o
-        # gateway desta rede custom do projeto. Com subnet fixa aqui, o
-        # gateway (172.19.0.1) fica previsivel entre "docker compose down/up",
-        # permitindo apontar OLLAMA_BASE_URL_DOCKER/COMFYUI_BASE_URL_DOCKER
-        # direto pra ele na VPS (ver scripts/deploy-vps.sh) sem depender do
-        # host-gateway quebrado. Em Windows/Mac (Docker Desktop) isso nao
-        # afeta nada - host.docker.internal ja funciona nativamente la.
-        - subnet: 172.19.0.0/16
+  # ---------- Ollama/ComfyUI em container (perfil "vps") ----------
+  # So sobem com "docker compose --profile vps up -d". Usados quando a
+  # maquina NAO tem GPU (ex: VPS) - roda tudo em CPU dentro da mesma rede
+  # docker, evitando de vez os problemas de firewall/roteamento entre
+  # container e servico nativo do host (host.docker.internal, iptables,
+  # zonas do firewalld etc). Localmente (Windows com GPU), continua
+  # usando Ollama/ComfyUI nativos fora do Docker - esses dois servicos
+  # simplesmente nao sobem sem o profile.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [vps]
+    restart: unless-stopped
+    mem_limit: 3g
+    environment:
+      OLLAMA_NUM_PARALLEL: 2
+      OLLAMA_MAX_LOADED_MODELS: 1
+      OLLAMA_KEEP_ALIVE: 5m
+    volumes:
+      - ollamadata:/root/.ollama
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:11434/api/tags']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  comfyui:
+    build:
+      context: .
+      dockerfile: docker/comfyui.Dockerfile
+    profiles: [vps]
+    restart: unless-stopped
+    mem_limit: 2560m
+    volumes:
+      # Reusa os arquivos ja baixados pelo instalador nativo antigo (evita
+      # rebaixar ~2GB de checkpoint) - ajuste o caminho se mudar de VPS.
+      - /opt/comfyui-models/checkpoints:/app/models/checkpoints
+      - /opt/comfyui-models/loras:/app/models/loras
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8188/system_stats']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
 volumes:
+  ollamadata:
   pgdata:
   redisdata:
   image-storage:
