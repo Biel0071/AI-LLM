@@ -5,10 +5,13 @@
 # Roda direto na VPS (nao em container) porque:
 #   - Ollama/ComfyUI dentro de Docker nao ganham nada (sem GPU aqui) e so
 #     adicionam overhead de camada extra numa maquina ja limitada em RAM.
-#   - Precisam ficar em 127.0.0.1 (loopback) para NAO expor porta publica -
-#     so os containers api/worker acessam via host.docker.internal (o
-#     docker-compose.yml ja mapeia host.docker.internal:host-gateway, que
-#     funciona em Docker 20.10+/Linux igual funciona no Windows).
+#   - Escutam em 0.0.0.0 (nao 127.0.0.1) porque os containers api/worker
+#     acessam via host.docker.internal, que resolve para o gateway da
+#     bridge do Docker (ex: 172.19.0.1) - NAO para loopback. Bind em
+#     loopback deixaria os proprios containers sem conseguir conectar.
+#     A exposicao publica fica bloqueada pelo firewalld (zona "public" no
+#     eth0 nao libera 11434/8188 - so servicos explicitamente permitidos
+#     passam), entao 0.0.0.0 aqui nao expoe nada para a internet.
 #
 # IMPORTANTE - RAM: essa VPS tem ~5.78GB TOTAIS, compartilhados com o
 # sistema ZAPAI que ja roda aqui. Ollama (qwen2.5:3b) + ComfyUI (SD1.5 +
@@ -84,11 +87,17 @@ else
   curl -fsSL https://ollama.com/install.sh | sh
 fi
 
-log "configurando systemd override do ollama (loopback + limites de RAM)"
+log "configurando systemd override do ollama (bridge docker + limites de RAM)"
+# 0.0.0.0 (nao 127.0.0.1) - os containers da stack acessam via
+# host.docker.internal, que resolve para o gateway da bridge do Docker
+# (ex: 172.19.0.1), NAO para loopback. Bind em loopback deixaria o Ollama
+# inacessivel para os proprios containers api/worker. A exposicao publica
+# fica bloqueada pelo firewalld (zona "public" no eth0 nao libera a porta
+# 11434 - so servicos explicitamente permitidos passam).
 mkdir -p /etc/systemd/system/ollama.service.d
 cat > /etc/systemd/system/ollama.service.d/override.conf <<'EOF'
 [Service]
-Environment="OLLAMA_HOST=127.0.0.1:11434"
+Environment="OLLAMA_HOST=0.0.0.0:11434"
 Environment="OLLAMA_NUM_PARALLEL=2"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
 Environment="OLLAMA_KEEP_ALIVE=5m"
@@ -97,6 +106,15 @@ systemctl daemon-reload
 systemctl enable ollama
 systemctl restart ollama
 sleep 3
+
+# Garante que a porta continua fechada para a internet publica mesmo com o
+# bind em 0.0.0.0 - reforca explicitamente (alem da zona "public" ja nao
+# listar a porta) que 11434/8188 nunca devem ser alcancaveis via eth0.
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+  firewall-cmd --zone=public --remove-port=11434/tcp --permanent >/dev/null 2>&1 || true
+  firewall-cmd --zone=public --remove-port=8188/tcp --permanent >/dev/null 2>&1 || true
+  firewall-cmd --reload >/dev/null 2>&1 || true
+fi
 
 log "baixando modelo qwen2.5:3b (unico modelo de texto - cabe na RAM disponivel)"
 ollama pull qwen2.5:3b
@@ -146,7 +164,9 @@ if [ ! -f "$LORA" ]; then
     "https://huggingface.co/latent-consistency/lcm-lora-sdv1-5/resolve/main/pytorch_lora_weights.safetensors"
 fi
 
-log "configurando systemd service do ComfyUI (loopback, CPU-only)"
+log "configurando systemd service do ComfyUI (bridge docker, CPU-only)"
+# --listen 0.0.0.0 pelo mesmo motivo do Ollama acima: precisa ser
+# alcancavel via host.docker.internal (gateway da bridge), nao so loopback.
 cat > /etc/systemd/system/comfyui.service <<EOF
 [Unit]
 Description=ComfyUI (AI Platform - image generation)
@@ -155,7 +175,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$COMFY_DIR
-ExecStart=$COMFY_DIR/venv/bin/python main.py --listen 127.0.0.1 --port 8188 --cpu --disable-auto-launch
+ExecStart=$COMFY_DIR/venv/bin/python main.py --listen 0.0.0.0 --port 8188 --cpu --disable-auto-launch
 Restart=on-failure
 RestartSec=5
 
