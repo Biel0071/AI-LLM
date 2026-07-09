@@ -57,6 +57,25 @@ const { result } = await ai.text({
 produto.descricao = result.text;
 ```
 
+### Descrição a partir da FOTO real do produto (não só do nome)
+
+Duas chamadas: visão (modelo pequeno, só funciona bem com instrução
+simples em inglês) + texto (modelo bom em português). NÃO peça pro
+`ai.vision` gerar copy de venda direto em português com instrução longa
+- ele falha silenciosamente (retorna texto vazio) nesse caso.
+
+```ts
+const { result: analise } = await ai.vision({
+  prompt: 'Describe this product image in detail: color, material, style, shape.',
+  images: [fotoBase64],
+});
+
+const { result } = await ai.text({
+  prompt: `Com base nesta descricao visual: "${analise.text}", escreva um texto de venda persuasivo em portugues para o produto "${produto.nome}".`,
+});
+produto.descricao = result.text;
+```
+
 ### Pacote SEO completo (nome, título, meta, slug, categoria, tags)
 
 ```ts
@@ -110,15 +129,20 @@ Docker habilitado no boot) - se cair por qualquer motivo, sobe sozinho e
 a fila retoma os jobs pendentes de onde parou (Redis/Postgres persistem
 em volumes).
 
-### Melhorar foto enviada pelo lojista (img2img)
+### Melhorar foto enviada pelo lojista / gerar "outras posições" (img2img)
 
 ```ts
 const { result } = await ai.image({
-  prompt: 'professional product photo, clean background, high quality',
+  prompt: 'professional product photo, clean background, different angle, high quality',
   image: fotoBase64,     // foto original
-  denoise: 0.35,         // 0.2-0.4 preserva o produto
+  denoise: 0.3,          // 0.2-0.3 preserva bem o produto real; 0.4-0.5 permite mais variacao
 });
 ```
+
+Isso NÃO gera ângulo de câmera 3D real a partir de 1 foto (precisaria de
+um modelo adicional pesado, inviável sem GPU) - o que faz é variar
+fundo/luz/enquadramento mantendo o produto reconhecível, o que já cobre
+bem "fotos similares" de catálogo.
 
 ### Upscale para zoom do catálogo
 
