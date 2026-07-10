@@ -10,7 +10,7 @@ import {
   UpscaleInput,
 } from '../types';
 import type { ControlNetInput, ImageProvider, ImageToImageInput, InpaintInput, OutpaintInput, RemoveBackgroundInput, TextToImageInput } from '../image-provider';
-import { globalGpuSemaphore } from '../gpu-semaphore';
+import { imageGpuSemaphore } from '../gpu-semaphore';
 
 export interface ComfyUIConfig {
   baseUrl: string;
@@ -364,7 +364,7 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
    * isoladamente (chegando a estourar timeouts que funcionam bem sozinhos).
    */
   private async submitAndWait(workflow: WorkflowGraph): Promise<GeneratedImage[]> {
-    const releaseGpu = await globalGpuSemaphore.acquire();
+    const releaseGpu = await imageGpuSemaphore.acquire();
     try {
       const promptId = await this.submit(workflow);
       return await this.waitForResult(promptId);

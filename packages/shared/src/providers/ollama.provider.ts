@@ -11,7 +11,7 @@ import {
   TokenUsage,
   VisionInput,
 } from '../types';
-import { globalGpuSemaphore } from '../gpu-semaphore';
+import { textGpuSemaphore } from '../gpu-semaphore';
 
 export interface OllamaConfig {
   baseUrl: string;
@@ -93,7 +93,7 @@ export class OllamaProvider extends BaseProvider {
   override async generateText(input: GenerateTextInput): Promise<ProviderResult<{ text: string }>> {
     const model = this.requireModel(input.model);
     const release = await this.semaphore.acquire();
-    const releaseGpu = await globalGpuSemaphore.acquire();
+    const releaseGpu = await textGpuSemaphore.acquire();
     let data: any;
     try {
       data = await this.http<any>(this.url('/api/generate'), {
@@ -135,7 +135,7 @@ export class OllamaProvider extends BaseProvider {
       images: m.images?.map((img) => parseImageInput(img).data),
     }));
     const release = await this.semaphore.acquire();
-    const releaseGpu = await globalGpuSemaphore.acquire();
+    const releaseGpu = await textGpuSemaphore.acquire();
     let data: any;
     try {
       data = await this.http<any>(this.url('/api/chat'), {
@@ -173,7 +173,7 @@ export class OllamaProvider extends BaseProvider {
   override async embed(input: EmbedInput): Promise<ProviderResult<{ embeddings: number[][] }>> {
     const model = this.requireModel(input.model, this.config.embedModel);
     const release = await this.semaphore.acquire();
-    const releaseGpu = await globalGpuSemaphore.acquire();
+    const releaseGpu = await textGpuSemaphore.acquire();
     let data: any;
     try {
       data = await this.http<any>(this.url('/api/embed'), {
