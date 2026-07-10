@@ -78,13 +78,18 @@ set_env COMFYUI_LCM_LORA lcm-lora-sdv1-5.safetensors
 # compartilhada (onde faz sentido serializar). IMAGE_WORKER_CONCURRENCY=1
 # ja garante que so 1 imagem roda por vez na fila - nao precisa tambem
 # travar texto atras dela.
-set_env GPU_MAX_CONCURRENT 2
+set_env GPU_MAX_CONCURRENT 1
 # WORKER_CONCURRENCY=4 (default) deixa ate 4 jobs de texto/seo rodando ao
-# mesmo tempo - testado em producao: 4 texto + 1 imagem concorrentes
-# saturam os 4 nucleos dessa VPS o suficiente pra estourar o timeout de
-# 5min da imagem E abortar os proprios textos ("This operation was
-# aborted"). 2 deixa folga real pra imagem tambem ter CPU disponivel.
-set_env WORKER_CONCURRENCY 2
+# mesmo tempo. Testado em producao em 2 rodadas: mesmo com 2 (nao so 4),
+# 2 textos + 1 imagem concorrentes ainda saturam a RAM dessa VPS (5.8GB
+# total) o suficiente pra forcar swap em disco - passos de sampler que
+# levam ~12s isolados passaram de 200-300s sob essa concorrencia. Nao e
+# falta de nucleos de CPU, e falta de RAM pra manter Ollama + ComfyUI
+# ambos com seus modelos carregados SEM swap enquanto ainda rodam mais
+# de 1 geracao ao mesmo tempo. Ate um upgrade de RAM (32GB elimina isso
+# de vez), 1 serializa TUDO (texto e imagem, um de cada vez) - mais lento
+# por item mas garante que nenhum trava/aborta.
+set_env WORKER_CONCURRENCY 1
 # Default de 90s foi calibrado pro tunel Cloudflare (que mata requests em
 # ~100s) da maquina local - nao existe tunel na VPS (chamada direta
 # container-a-container), entao pode ser bem mais generoso. Testado em
