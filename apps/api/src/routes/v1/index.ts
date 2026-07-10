@@ -24,7 +24,7 @@ import {
   visionSchema,
 } from '@ai-platform/shared';
 import { execute, registry } from '../../services/ai.service';
-import { enqueue, enqueueAndWait, QueueName } from '../../services/queue.service';
+import { enqueue, enqueueAndWait, QueueName, queueStats } from '../../services/queue.service';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { persistImageResponse } from '../../services/image-storage.service';
@@ -45,12 +45,24 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     }
     const routeUrl = req.routeOptions.url;
     const routePath = routeUrl?.replace(/^\/v1/, '');
-    let required = routePath ? scopeByRoute[routePath] : undefined;
+    const typeToScope = (type: string | undefined) => (type === 'ocr' ? 'ocr' : type === 'embedding' ? 'embed' : 'text');
+    const hasScope = (scope: string) => req.auth?.scopes.includes('*') || req.auth?.scopes.includes(scope);
     if (routePath === '/jobs' && req.method === 'POST') {
       const type = (req.body as { type?: string } | undefined)?.type;
-      required = type === 'ocr' ? 'ocr' : type === 'embedding' ? 'embed' : 'text';
+      const required = typeToScope(type);
+      if (!hasScope(required)) return reply.code(403).send(fail('INSUFFICIENT_SCOPE', `A API key nao possui o escopo ${required}`));
+      return;
     }
-    if (!required || req.auth?.scopes.includes('*') || req.auth?.scopes.includes(required)) return;
+    if (routePath === '/jobs/batch' && req.method === 'POST') {
+      const jobs = (req.body as { jobs?: Array<{ type?: string }> } | undefined)?.jobs ?? [];
+      const requiredScopes = new Set(jobs.map((j) => typeToScope(j.type)));
+      for (const required of requiredScopes) {
+        if (!hasScope(required)) return reply.code(403).send(fail('INSUFFICIENT_SCOPE', `A API key nao possui o escopo ${required}`));
+      }
+      return;
+    }
+    const required = routePath ? scopeByRoute[routePath] : undefined;
+    if (!required || hasScope(required)) return;
     return reply.code(403).send(fail('INSUFFICIENT_SCOPE', `A API key nao possui o escopo ${required}`));
   });
 
@@ -218,6 +230,52 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       createdAt: job.createdAt,
       finishedAt: job.finishedAt,
     };
+  });
+
+  // ---------- Lote: enfileira N jobs numa unica chamada HTTP ----------
+  // Pensado pra catalogo em lote (ex: Lovable "populate-catalog" com 500+
+  // produtos) - em vez do chamador precisar espacar centenas de POST
+  // /v1/jobs individuais (e esbarrar no rate limit por chave), manda tudo
+  // de uma vez aqui. A fila (BullMQ, concorrencia configurada via
+  // WORKER_CONCURRENCY/IMAGE_WORKER_CONCURRENCY) absorve e processa no
+  // proprio ritmo sustentavel - aceitar 1000 jobs nao significa rodar
+  // 1000 ao mesmo tempo, so significa que 1000 ficam na fila esperando a
+  // vez, sem gerar 1000 conexoes/retries do lado do chamador.
+  app.post('/jobs/batch', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
+    const body = z.object({ jobs: z.array(jobSchema).min(1).max(1000) }).parse(req.body);
+    const jobIds = await Promise.all(
+      body.jobs.map((j) =>
+        enqueue(j.type as QueueName, j.payload, {
+          tenantId: req.auth?.tenantId,
+          projectId: req.auth?.projectId,
+          priority: j.priority,
+        }),
+      ),
+    );
+    return reply.code(202).send({ success: true, jobIds, count: jobIds.length });
+  });
+
+  // ---------- Status de varios jobs numa unica chamada ----------
+  // Evita ter que fazer 1 GET /jobs/:id por item pra desenhar progresso de
+  // um lote grande - manda os ids que importam e recebe o status de todos.
+  app.post('/jobs/status', { config: rlConfig, schema: { tags: ['v1'] } }, async (req) => {
+    const body = z.object({ ids: z.array(z.string().min(1)).min(1).max(1000) }).parse(req.body);
+    const jobs = await prisma.job.findMany({
+      where: {
+        id: { in: body.ids },
+        ...(req.auth?.tenantId ? { tenantId: req.auth.tenantId } : {}),
+      },
+      select: { id: true, status: true, result: true, error: true, finishedAt: true },
+    });
+    return { success: true, jobs };
+  });
+
+  // ---------- Resumo agregado da fila (sem precisar de admin) ----------
+  // Quantos jobs estao esperando/rodando/completos/falhos por tipo -
+  // pra mostrar barra de progresso/ETA de um lote grande sem precisar
+  // consultar cada job individualmente.
+  app.get('/jobs/stats', { schema: { tags: ['v1'] } }, async () => {
+    return { success: true, queues: await queueStats() };
   });
 
   app.get('/images/:id/file', { schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
