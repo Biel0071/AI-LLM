@@ -19,6 +19,17 @@ export interface OllamaConfig {
   embedModel?: string;
   visionModel?: string;
   maxParallel?: number;
+  /**
+   * Timeout do HTTP client pra cada chamada de texto/chat ao Ollama.
+   * Default (90s) foi calibrado pro cenario de tunel Cloudflare local, que
+   * mata qualquer request proxiado em ~100s - nao faz sentido deixar o
+   * Ollama tentar mais que isso ali, senao a geracao continua rodando e
+   * segurando vaga do semaforo depois que o cliente ja desistiu (524).
+   * Numa VPS sem tunel na frente (chamada direta container-a-container),
+   * essa preocupacao nao existe - configure mais alto (ex: 180000) pra dar
+   * folga real quando 2+ geracoes concorrentes deixam cada uma mais lenta.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -109,16 +120,10 @@ export class OllamaProvider extends BaseProvider {
             num_predict: input.maxTokens,
           },
         },
-        // Cloudflare mata qualquer request proxiado com HTTP 524 em ~100s,
-        // mesmo atras de tunel - nao ha como aumentar isso do nosso lado.
-        // Deixar o Ollama tentar por 300s so cria "zumbis": o cliente ja
-        // desistiu e recebeu 524, mas a geracao continua rodando aqui dentro
-        // e segurando uma das 3 vagas do semaforo por ate 5 minutos. Sob
-        // retry automatico (como o do Lovable), isso empilha zumbis mais
-        // rapido do que eles liberam vaga, entupindo o sistema de vez.
-        // 90s garante que um pedido abandonado libera a vaga antes do
-        // proximo retry chegar.
-        timeoutMs: 90_000,
+        // Ver comentario de OllamaConfig.timeoutMs - 90s e o default seguro
+        // pra cenario com tunel Cloudflare na frente; configuravel mais alto
+        // onde nao ha tunel (VPS).
+        timeoutMs: this.config.timeoutMs ?? 90_000,
       });
     } finally {
       releaseGpu();
@@ -146,7 +151,7 @@ export class OllamaProvider extends BaseProvider {
           stream: false,
           options: { temperature: input.temperature, num_predict: input.maxTokens },
         },
-        timeoutMs: 90_000,
+        timeoutMs: this.config.timeoutMs ?? 90_000,
       });
     } finally {
       releaseGpu();

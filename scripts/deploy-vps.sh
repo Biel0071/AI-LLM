@@ -85,6 +85,17 @@ set_env GPU_MAX_CONCURRENT 2
 # 5min da imagem E abortar os proprios textos ("This operation was
 # aborted"). 2 deixa folga real pra imagem tambem ter CPU disponivel.
 set_env WORKER_CONCURRENCY 2
+# Default de 90s foi calibrado pro tunel Cloudflare (que mata requests em
+# ~100s) da maquina local - nao existe tunel na VPS (chamada direta
+# container-a-container), entao pode ser bem mais generoso. Testado em
+# producao: com 2 textos concorrentes (WORKER_CONCURRENCY=2), cada geracao
+# de SEO completo (resposta longa) pode passar de 90s sob CPU dividida -
+# 90s estava abortando textos legitimos, nao travados.
+set_env OLLAMA_TIMEOUT_MS 180000
+# JOB_WAIT_TIMEOUT_MS (endpoint sincrono /v1/jobs com wait:true) precisa
+# ficar ACIMA do OLLAMA_TIMEOUT_MS acima, senao o cliente desiste antes do
+# job ter chance de terminar dentro do proprio timeout do Ollama.
+set_env JOB_WAIT_TIMEOUT_MS 240000
 # Portas do host para postgres/redis - a 5432/6379 padrao ja esta em uso
 # nativamente por outro sistema nesta VPS (ver cabecalho do script).
 set_env POSTGRES_HOST_PORT 5433
