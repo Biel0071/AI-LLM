@@ -78,7 +78,13 @@ set_env COMFYUI_LCM_LORA lcm-lora-sdv1-5.safetensors
 # compartilhada (onde faz sentido serializar). IMAGE_WORKER_CONCURRENCY=1
 # ja garante que so 1 imagem roda por vez na fila - nao precisa tambem
 # travar texto atras dela.
-set_env GPU_MAX_CONCURRENT 3
+set_env GPU_MAX_CONCURRENT 2
+# WORKER_CONCURRENCY=4 (default) deixa ate 4 jobs de texto/seo rodando ao
+# mesmo tempo - testado em producao: 4 texto + 1 imagem concorrentes
+# saturam os 4 nucleos dessa VPS o suficiente pra estourar o timeout de
+# 5min da imagem E abortar os proprios textos ("This operation was
+# aborted"). 2 deixa folga real pra imagem tambem ter CPU disponivel.
+set_env WORKER_CONCURRENCY 2
 # Portas do host para postgres/redis - a 5432/6379 padrao ja esta em uso
 # nativamente por outro sistema nesta VPS (ver cabecalho do script).
 set_env POSTGRES_HOST_PORT 5433
