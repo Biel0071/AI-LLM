@@ -119,6 +119,19 @@ const GALLERY_ANGLES = [
   'in-use photo, lifestyle shot, natural setting',
 ];
 
+/** Placeholder 1x1 sem foto vira text-to-image, em vez de falhar no LoadImage. */
+function hasUsableSourceImage(image: unknown): image is string {
+  if (typeof image !== 'string' || !image.trim()) return false;
+  if (/^https?:\/\//i.test(image)) return true;
+  try {
+    const parsed = parseImageInput(image);
+    if (parsed.kind === 'url') return true;
+    return Buffer.from(parsed.data, 'base64').length >= 256;
+  } catch {
+    return false;
+  }
+}
+
 // ---------- Worker Imagem (geracao + upscale) ----------
 export const imageProcessor: ProcessorFn = async (job, registry) => {
   const data = job.data as Record<string, any>;
@@ -152,19 +165,21 @@ export const imageProcessor: ProcessorFn = async (job, registry) => {
   if (data.__kind === 'gallery') {
     const provider = registry.resolve('image', data.provider);
     return run(provider, async () => {
-      const count = Math.min(Math.max(Number(data.count) || 5, 1), 10);
+      const requestedCount = Math.min(Math.max(Number(data.count) || 5, 1), 10);
+      const configuredMax = Math.min(Math.max(Number(process.env.GALLERY_MAX_IMAGES_PER_JOB) || 10, 1), 10);
+      const count = Math.min(requestedCount, configuredMax);
+      const sourceImage = hasUsableSourceImage(data.image) ? data.image : undefined;
       const images: any[] = [];
       let usedModel = data.model ?? 'unknown';
       for (let i = 0; i < count; i++) {
         const angle = GALLERY_ANGLES[i % GALLERY_ANGLES.length];
         const res = await provider.generateImage({
           ...data,
+          image: sourceImage,
           prompt: `${data.prompt}, ${angle}`,
           denoise: data.strength ?? 0.35 + (i % 3) * 0.1,
-          // 15 passos (era o default de 25 do provider) - corta ~35-40% do
-          // tempo por imagem sem perda visivel de qualidade nesse checkpoint
-          // (DreamShaper 8 + dpmpp_2m/karras ja e eficiente em poucos passos).
-          steps: data.steps ?? 15,
+          // Sem override: o provider aplica o perfil LCM da VPS (3 passos).
+          steps: data.steps,
           seed: data.seed != null ? Number(data.seed) + i : undefined,
         } as any);
         images.push(...res.result.images);

@@ -183,7 +183,10 @@ for (const name of queueNames) {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         const maxAttempts = Number(job.opts.attempts ?? 1);
-        const willRetry = job.attemptsMade + 1 < maxAttempts;
+        // Entrada invalida e deterministica nao melhora com retry.
+        const permanentFailure = /Invalid argument returned 22|invalid image|unsupported image/i.test(message);
+        if (permanentFailure) job.discard();
+        const willRetry = !permanentFailure && job.attemptsMade + 1 < maxAttempts;
         await markJob(jobId, {
           status: willRetry ? 'waiting' : 'failed',
           error: message.slice(0, 2000),

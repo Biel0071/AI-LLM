@@ -43,6 +43,8 @@ POST /v1/image
 Body: { "prompt": string, "negativePrompt": string opcional, "provider": "auto", "model": "auto", "wait": false }
 Resposta esperada: { "success": true, "jobId": string, "status": "waiting" }
 
+Para população de catálogo gere uma imagem por produto. Se usar `POST /v1/image-gallery`, envie explicitamente `"count": 1`; não use uma imagem transparente 1x1 como placeholder. Quando não houver foto de origem, use `POST /v1/image` somente com prompt.
+
 População de catálogo em lote:
 POST /v1/jobs/batch
 Body:

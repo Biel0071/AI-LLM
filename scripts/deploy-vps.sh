@@ -121,6 +121,8 @@ set_env RATE_LIMIT_MAX 600
 # Fila "image" sempre roda 1 por vez (ComfyUI so processa 1 workflow por
 # vez fisicamente) - explicito aqui pra nao depender do default do codigo.
 set_env IMAGE_WORKER_CONCURRENCY 1
+# Um job por produto; cinco variacoes multiplicam a CPU por 5.
+set_env GALLERY_MAX_IMAGES_PER_JOB 1
 # .env.example vem com OLLAMA_DEFAULT_MODEL=llama3 (generico, exemplo) -
 # essa VPS so tem qwen2.5:3b instalado. Sem isso, qualquer chamada de
 # texto SEM task explicito (chat geral, "gerar descricao" etc) cai no

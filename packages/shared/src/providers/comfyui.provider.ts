@@ -174,17 +174,23 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
 
   private buildImg2Img(input: GenerateImageInput, checkpoint: string, uploadedName: string): WorkflowGraph {
     const seed = input.seed ?? Math.floor(Math.random() * 2 ** 32);
+    const lcm = this.isLcmMode ? this.lcmSamplerDefaults : null;
+    const width = Math.max(64, Math.round((input.width ?? lcm?.width ?? this.config.defaultWidth ?? 512) / 8) * 8);
+    const height = Math.max(64, Math.round((input.height ?? lcm?.height ?? this.config.defaultHeight ?? 512) / 8) * 8);
     const graph: WorkflowGraph = {
       '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpoint } },
       '8': { class_type: 'LoadImage', inputs: { image: uploadedName } },
-      '9': { class_type: 'VAEEncode', inputs: { pixels: ['8', 0], vae: ['1', 2] } },
+      // Fotos de catalogo chegam em 1440x1800 ou maiores. Codificar a imagem
+      // original inteira no VAE CPU leva minutos; reduz antes para o perfil
+      // solicitado/LCM e mantem o produto centralizado.
+      '10': { class_type: 'ImageScale', inputs: { image: ['8', 0], upscale_method: 'lanczos', width, height, crop: 'center' } },
+      '9': { class_type: 'VAEEncode', inputs: { pixels: ['10', 0], vae: ['1', 2] } },
       '6': { class_type: 'VAEDecode', inputs: { samples: ['5', 0], vae: ['1', 2] } },
       '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'aiplatform' } },
     };
     const { modelRef, clipRef } = this.applyLcmLora(graph, input.steps);
     graph['2'] = { class_type: 'CLIPTextEncode', inputs: { text: input.prompt, clip: clipRef } };
     graph['3'] = { class_type: 'CLIPTextEncode', inputs: { text: input.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT, clip: clipRef } };
-    const lcm = this.isLcmMode ? this.lcmSamplerDefaults : null;
     graph['5'] = {
       class_type: 'KSampler',
       inputs: {
