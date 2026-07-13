@@ -134,6 +134,10 @@ set_env OLLAMA_MAX_QUEUE 128
 set_env COMFYUI_DEFAULT_WIDTH 256
 set_env COMFYUI_DEFAULT_HEIGHT 256
 set_env COMFYUI_DEFAULT_STEPS 3
+# Checkpoint LCM mesclado instalado pelo provisionamento: 3 passos reais,
+# sem custo do node LoraLoader a cada requisicao.
+set_env COMFYUI_CHECKPOINT DreamShaper_8_LCM_merged.safetensors
+set_env COMFYUI_LCM_MODE true
 
 # 3. Modelos do ComfyUI + swap (unica coisa que ainda roda fora do Docker)
 echo '-- Preparando swap e baixando modelos do ComfyUI --'
