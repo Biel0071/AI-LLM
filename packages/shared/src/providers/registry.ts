@@ -53,7 +53,8 @@ export class ProviderRegistry {
    * provider registrado que suporta a capacidade.
    */
   resolve(capability: Capability, requestedProvider?: string): AIProvider {
-    if (requestedProvider) {
+    // 'auto' faz parte do contrato publico e significa usar default/fallback.
+    if (requestedProvider && requestedProvider.toLowerCase() !== 'auto') {
       const provider = this.get(requestedProvider);
       if (!provider.capabilities.includes(capability)) {
         throw new ProviderError(
@@ -222,6 +223,9 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
         upscaleModel: env.COMFYUI_UPSCALE_MODEL,
         zero123Checkpoint: env.COMFYUI_ZERO123_CHECKPOINT,
         timeoutMs: env.COMFYUI_TIMEOUT_MS ? Number(env.COMFYUI_TIMEOUT_MS) : undefined,
+        defaultWidth: env.COMFYUI_DEFAULT_WIDTH ? Number(env.COMFYUI_DEFAULT_WIDTH) : undefined,
+        defaultHeight: env.COMFYUI_DEFAULT_HEIGHT ? Number(env.COMFYUI_DEFAULT_HEIGHT) : undefined,
+        defaultSteps: env.COMFYUI_DEFAULT_STEPS ? Number(env.COMFYUI_DEFAULT_STEPS) : undefined,
         lcmLoraName: env.COMFYUI_LCM_LORA,
         lcmMode: env.COMFYUI_LCM_MODE === 'true',
       }),

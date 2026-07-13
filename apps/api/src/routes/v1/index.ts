@@ -45,7 +45,8 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     }
     const routeUrl = req.routeOptions.url;
     const routePath = routeUrl?.replace(/^\/v1/, '');
-    const typeToScope = (type: string | undefined) => (type === 'ocr' ? 'ocr' : type === 'embedding' ? 'embed' : 'text');
+    const typeToScope = (type: string | undefined) =>
+      type === 'ocr' ? 'ocr' : type === 'embedding' ? 'embed' : type === 'image' ? 'image' : 'text';
     const hasScope = (scope: string) => req.auth?.scopes.includes('*') || req.auth?.scopes.includes(scope);
     if (routePath === '/jobs' && req.method === 'POST') {
       const type = (req.body as { type?: string } | undefined)?.type;
@@ -209,6 +210,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const body = jobSchema.parse(req.body);
     const jobId = await enqueue(body.type as QueueName, body.payload, {
       tenantId: req.auth?.tenantId,
+      projectId: req.auth?.projectId,
       priority: body.priority,
     });
     return reply.code(202).send({ success: true, jobId, status: 'waiting' });
@@ -264,6 +266,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       where: {
         id: { in: body.ids },
         ...(req.auth?.tenantId ? { tenantId: req.auth.tenantId } : {}),
+        ...(req.auth?.projectId ? { projectId: req.auth.projectId } : {}),
       },
       select: { id: true, status: true, result: true, error: true, finishedAt: true },
     });

@@ -92,9 +92,11 @@ if ($dockerUp) {
 # setar via [Environment]::SetEnvironmentVariable(...,"User") sozinho NAO e
 # suficiente: um processo filho desta sessao nao le mudancas no registro feitas
 # por ela mesma, entao "ollama app.exe" nao herdaria os valores corretos.
-Write-Step "Reiniciando Ollama com configuracao otimizada (RAM/velocidade/paralelismo)"
+Write-Step "Verificando Ollama e configuracao de desempenho"
 $ollamaApp = "$env:LOCALAPPDATA\Programs\Ollama\ollama app.exe"
-if (Test-Path $ollamaApp) {
+if (Test-Url "http://localhost:11434/api/tags") {
+    Write-Ok "Ollama ja estava online (processo preservado)"
+} elseif (Test-Path $ollamaApp) {
     Stop-Process -Name "ollama app" -Force -ErrorAction SilentlyContinue
     Stop-Process -Name "ollama" -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
@@ -151,12 +153,31 @@ if ($dockerUp) {
     Wait-Url "http://localhost:3000/v1/health" "API (porta 3000)" 60 | Out-Null
 }
 
+# ---------- 5.1 Watchdog automatico ----------
+# Registra uma verificacao periodica. A tarefa roda no contexto do usuario e
+# reativa apenas quando um componente deixa de responder.
+Write-Step "Configurando recuperacao automatica"
+$watchdogTask = "AI Platform Watchdog"
+$watchdogScript = Join-Path $root "scripts\vigia-sistema.ps1"
+$watchdogAction = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchdogScript`""
+& schtasks.exe /Create /TN $watchdogTask /TR $watchdogAction /SC MINUTE /MO 5 /F *> $null
+if ($LASTEXITCODE -eq 0) { Write-Ok "Watchdog ativo a cada 5 minutos" }
+else { Write-Warn "Nao foi possivel registrar o watchdog; execute INICIAR.bat como administrador uma vez" }
+
 # ---------- 6. Tunel publico (Cloudflare) ----------
 # Quick Tunnel do cloudflared: URL aleatoria *.trycloudflare.com, sem precisar
 # de conta. Ela muda a cada reinicio - por isso o processo antigo e sempre
 # derrubado e uma URL nova e sempre capturada e mostrada abaixo.
 $tunnelUrl = $null
-if ($dockerUp) {
+$existingTunnelFile = Join-Path $root "tunnel-url.txt"
+if (Test-Path $existingTunnelFile) {
+    $existingTunnel = (Get-Content $existingTunnelFile -Raw -ErrorAction SilentlyContinue).Trim()
+    if ($existingTunnel -and (Test-Url "$existingTunnel/v1/health" 8)) {
+        $tunnelUrl = $existingTunnel
+        Write-Ok "Tunel existente preservado: $tunnelUrl"
+    }
+}
+if ($dockerUp -and -not $tunnelUrl) {
     Write-Step "Abrindo tunel publico (Cloudflare) para a API"
     $cloudflaredExe = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
     if (-not (Test-Path $cloudflaredExe)) {

@@ -1,14 +1,19 @@
 import { z } from 'zod';
 
+const optionalAutoString = z.preprocess(
+  (value) => typeof value === 'string' && value.toLowerCase() === 'auto' ? undefined : value,
+  z.string().min(1).optional(),
+);
+
 const common = {
-  provider: z.string().min(1).optional(),
-  model: z.string().min(1).optional(),
+  provider: optionalAutoString,
+  model: optionalAutoString,
   /**
    * Pista opcional de tarefa (ex.: "translation", "classification", "seo",
    * "vision") para o roteamento automatico escolher o melhor modelo quando
    * `model` nao for informado. Sem efeito se `model` for explicito.
    */
-  task: z.enum(['general', 'chat', 'classification', 'translation', 'seo', 'ocr', 'vision', 'embed']).optional(),
+  task: z.enum(['general', 'chat', 'quality', 'classification', 'translation', 'seo', 'ocr', 'vision', 'embed']).optional(),
   cache: z.boolean().optional().default(true),
   fallback: z.boolean().optional().default(true),
   projectId: z.string().min(1).optional(),
@@ -51,7 +56,7 @@ export const imageSchema = z.object({
   batch: z.number().int().min(1).max(8).optional(),
   removeBackground: z.boolean().optional(),
   /** true = espera o resultado; false = retorna jobId imediatamente */
-  wait: z.boolean().optional().default(true),
+  wait: z.boolean().optional().default(false),
   ...common,
 });
 
@@ -62,7 +67,7 @@ export const imageToImageSchema = z.object({
   height: z.number().int().min(64).max(4096).optional(), steps: z.number().int().min(1).max(150).optional(),
   cfgScale: z.number().min(0).max(30).optional(),
   /** true = espera o resultado; false = retorna jobId imediatamente (recomendado: geracao de imagem passa de 100s e o Cloudflare mata a conexao antes) */
-  wait: z.boolean().optional().default(true),
+  wait: z.boolean().optional().default(false),
   ...common,
 });
 export const inpaintSchema = imageToImageSchema.extend({ mask: z.string().min(1) });
@@ -121,7 +126,7 @@ export const multiAngleSchema = z.object({
 export const upscaleSchema = z.object({
   image: z.string().min(1),
   scale: z.number().min(1).max(8).optional().default(4),
-  wait: z.boolean().optional().default(true),
+  wait: z.boolean().optional().default(false),
   ...common,
 });
 
@@ -140,7 +145,7 @@ export const embedSchema = z.object({
 export const ocrSchema = z.object({
   image: z.string().min(1),
   language: z.string().optional(),
-  wait: z.boolean().optional().default(true),
+  wait: z.boolean().optional().default(false),
   ...common,
 });
 

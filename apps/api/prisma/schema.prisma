@@ -127,6 +127,7 @@ model Job {
   type        String
   status      String    @default("waiting") // waiting | active | completed | failed
   priority    Int       @default(5)
+  dedupKey    String?
   payload     Json
   result      Json?
   error       String?
@@ -143,6 +144,7 @@ model Job {
   @@index([tenantId, status])
   @@index([projectId, status])
   @@index([queue, status])
+  @@index([dedupKey, status])
 }
 
 // ---------- Logs / Uso / Custos ----------

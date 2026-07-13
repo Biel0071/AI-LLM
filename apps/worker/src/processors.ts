@@ -18,6 +18,34 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * A VPS tem RAM para ComfyUI ou Ollama com folga, mas manter os dois modelos
+ * residentes durante a difusao provoca swap e quase dobra o tempo por imagem.
+ * Antes de um job de imagem, libera somente modelos ociosos do Ollama. A proxima
+ * chamada de texto recarrega sob demanda; provedores externos nao sao afetados.
+ */
+async function releaseOllamaMemoryForImage(): Promise<void> {
+  const base = process.env.OLLAMA_BASE_URL?.replace(/\/$/, '');
+  if (!base) return;
+  try {
+    const response = await fetch(`${base}/api/ps`, { signal: AbortSignal.timeout(5_000) });
+    if (!response.ok) return;
+    const data = await response.json() as { models?: Array<{ name?: string; model?: string }> };
+    for (const loaded of data.models ?? []) {
+      const model = loaded.name ?? loaded.model;
+      if (!model) continue;
+      await fetch(`${base}/api/generate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model, keep_alive: 0 }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    }
+  } catch {
+    // Otimizacao best-effort: indisponibilidade do Ollama nunca bloqueia imagem.
+  }
+}
+
 export type ProcessorFn = (job: Job, registry: ProviderRegistry) => Promise<StandardResponse>;
 
 /** Executa a chamada de provider medindo tempo e envelopando a resposta. */
@@ -94,6 +122,7 @@ const GALLERY_ANGLES = [
 // ---------- Worker Imagem (geracao + upscale) ----------
 export const imageProcessor: ProcessorFn = async (job, registry) => {
   const data = job.data as Record<string, any>;
+  await releaseOllamaMemoryForImage();
   if (data.__kind === 'multiangle') {
     const provider = registry.resolve('image', data.provider) as any;
     return run(provider, async () => {

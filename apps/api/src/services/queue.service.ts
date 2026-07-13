@@ -2,6 +2,7 @@ import { Queue, QueueEvents } from 'bullmq';
 import { env } from '../config/env';
 import { createBullConnection } from '../lib/redis';
 import { prisma } from '../lib/prisma';
+import { cacheKey } from '@ai-platform/shared';
 
 export const QUEUE_NAMES = [
   'text',
@@ -30,7 +31,9 @@ export function getQueue(name: QueueName): Queue {
         attempts: 3,
         backoff: { type: 'exponential', delay: 3000 },
         removeOnComplete: { age: 3600, count: 1000 },
-        removeOnFail: false, // dead letter: jobs com falha ficam para inspecao
+        // Mantem uma dead letter util sem deixar falhas crescerem para sempre
+        // dentro do Redis. O historico duravel continua no Postgres.
+        removeOnFail: { age: 7 * 24 * 3600, count: 2000 },
       },
     });
     queues.set(name, queue);
@@ -59,6 +62,20 @@ export async function enqueue(
   payload: Record<string, unknown>,
   opts: EnqueueOptions = {},
 ): Promise<string> {
+  const shouldDeduplicate = payload.cache !== false;
+  const dedupKey = shouldDeduplicate
+    ? cacheKey('job', name, `${opts.tenantId ?? 'global'}:${opts.projectId ?? 'all'}`, payload)
+    : undefined;
+
+  if (dedupKey) {
+    const existing = await prisma.job.findFirst({
+      where: { dedupKey, status: { in: ['waiting', 'active', 'completed'] } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+  }
+
   const record = await prisma.job.create({
     data: {
       tenantId: opts.tenantId,
@@ -67,6 +84,7 @@ export async function enqueue(
       type: name,
       status: 'waiting',
       priority: opts.priority ?? 5,
+      dedupKey,
       payload: payload as object,
     },
   });
@@ -103,19 +121,17 @@ export async function enqueueAndWait<T = unknown>(
 export async function queueStats(): Promise<
   Array<{ name: QueueName; waiting: number; active: number; completed: number; failed: number; delayed: number }>
 > {
-  const stats = [];
-  for (const name of QUEUE_NAMES) {
+  return Promise.all(QUEUE_NAMES.map(async (name) => {
     const counts = await getQueue(name).getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed');
-    stats.push({
+    return {
       name,
       waiting: counts.waiting ?? 0,
       active: counts.active ?? 0,
       completed: counts.completed ?? 0,
       failed: counts.failed ?? 0,
       delayed: counts.delayed ?? 0,
-    });
-  }
-  return stats;
+    };
+  }));
 }
 
 export async function closeQueues(): Promise<void> {

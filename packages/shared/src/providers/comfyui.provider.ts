@@ -20,6 +20,10 @@ export interface ComfyUIConfig {
   /** Checkpoint .ckpt do Stable Zero123 (novel view synthesis de verdade) */
   zero123Checkpoint?: string;
   timeoutMs?: number;
+  /** Defaults de desempenho; o chamador ainda pode sobrescrever por request. */
+  defaultWidth?: number;
+  defaultHeight?: number;
+  defaultSteps?: number;
   /**
    * LCM-LoRA (arquivo .safetensors em models/loras/) aplicado ao MESMO
    * checkpoint configurado via node LoraLoader a cada geracao - reduz de
@@ -121,7 +125,14 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
     // em CPU o custo escala muito mais que linear com resolucao - 1024x1024
     // levaria minutos, inviavel pro caso de uso de catalogo de produto que
     // precisa de resposta rapida (<1min).
-    return { steps: 3, cfg: 1.5, sampler_name: 'lcm', scheduler: 'sgm_uniform', width: 512, height: 512 };
+    return {
+      steps: this.config.defaultSteps ?? 3,
+      cfg: 1.5,
+      sampler_name: 'lcm',
+      scheduler: 'sgm_uniform',
+      width: this.config.defaultWidth ?? 512,
+      height: this.config.defaultHeight ?? 512,
+    };
   }
 
   private buildTxt2Img(input: GenerateImageInput, checkpoint: string): WorkflowGraph {

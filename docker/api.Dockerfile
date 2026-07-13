@@ -20,7 +20,8 @@ COPY apps/dashboard ./apps/dashboard
 
 RUN npm run build -w packages/shared \
  && npx prisma generate --schema apps/api/prisma/schema.prisma \
- && npm run build -w apps/api
+ && npm run build -w apps/api \
+ && npm test -w apps/api
 
 # ---------- Runtime ----------
 FROM node:22-alpine

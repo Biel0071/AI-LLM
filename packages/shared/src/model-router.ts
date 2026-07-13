@@ -9,6 +9,7 @@ import type { Capability } from './types';
 export type TaskHint =
   | 'general'
   | 'chat'
+  | 'quality'
   | 'classification'
   | 'translation'
   | 'seo'
@@ -19,6 +20,7 @@ export type TaskHint =
 export interface ModelRouteEnv {
   OLLAMA_FAST_MODEL?: string;
   OLLAMA_DEFAULT_MODEL?: string;
+  OLLAMA_QUALITY_MODEL?: string;
   OLLAMA_VISION_MODEL?: string;
   OLLAMA_EMBED_MODEL?: string;
   [key: string]: string | undefined;
@@ -50,6 +52,9 @@ export function pickModel(
   }
   if (capability === 'embed' || task === 'embed') {
     return env.OLLAMA_EMBED_MODEL || env.OLLAMA_DEFAULT_MODEL;
+  }
+  if (task === 'quality') {
+    return env.OLLAMA_QUALITY_MODEL || env.OLLAMA_DEFAULT_MODEL;
   }
   if (task && FAST_TASKS.has(task)) {
     return env.OLLAMA_FAST_MODEL || env.OLLAMA_DEFAULT_MODEL;

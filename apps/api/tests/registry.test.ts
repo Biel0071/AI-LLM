@@ -24,6 +24,15 @@ describe('ProviderRegistry', () => {
     expect(registry.resolve('text', 'ollama').name).toBe('ollama');
   });
 
+  it('trata provider auto como roteamento automatico', () => {
+    const registry = createRegistryFromEnv({
+      OLLAMA_BASE_URL: 'http://localhost:11434',
+      COMFYUI_BASE_URL: 'http://localhost:8188',
+    });
+    expect(registry.resolve('text', 'auto').name).toBe('ollama');
+    expect(registry.resolve('image', 'AUTO').name).toBe('comfyui');
+  });
+
   it('cai no primeiro provider compativel quando nao ha default', () => {
     const registry = new ProviderRegistry();
     registry.register(new OllamaProvider({ baseUrl: 'http://x' }));

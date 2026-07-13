@@ -90,6 +90,11 @@ set_env GPU_MAX_CONCURRENT 1
 # de vez), 1 serializa TUDO (texto e imagem, um de cada vez) - mais lento
 # por item mas garante que nenhum trava/aborta.
 set_env WORKER_CONCURRENCY 1
+# Limite compartilhado entre TODAS as filas. Sem ele, text/image/ocr/seo
+# tinham concorrencia 1 cada, mas ainda podiam rodar simultaneamente.
+set_env GLOBAL_WORKER_CONCURRENCY 1
+set_env ADAPTIVE_CONCURRENCY true
+set_env PROVIDER_REGISTRY_TTL_MS 15000
 # Default de 90s foi calibrado pro tunel Cloudflare (que mata requests em
 # ~100s) da maquina local - nao existe tunel na VPS (chamada direta
 # container-a-container), entao pode ser bem mais generoso. Testado em
@@ -120,7 +125,15 @@ set_env IMAGE_WORKER_CONCURRENCY 1
 # essa VPS so tem qwen2.5:3b instalado. Sem isso, qualquer chamada de
 # texto SEM task explicito (chat geral, "gerar descricao" etc) cai no
 # roteamento "default" e falha com "model 'llama3' not found" upstream.
-set_env OLLAMA_DEFAULT_MODEL qwen2.5:3b
+set_env OLLAMA_DEFAULT_MODEL qwen2.5:1.5b
+set_env OLLAMA_FAST_MODEL qwen2.5:1.5b
+set_env OLLAMA_QUALITY_MODEL qwen2.5:3b
+set_env OLLAMA_NUM_PARALLEL 1
+set_env OLLAMA_KEEP_ALIVE 30m
+set_env OLLAMA_MAX_QUEUE 128
+set_env COMFYUI_DEFAULT_WIDTH 256
+set_env COMFYUI_DEFAULT_HEIGHT 256
+set_env COMFYUI_DEFAULT_STEPS 3
 
 # 3. Modelos do ComfyUI + swap (unica coisa que ainda roda fora do Docker)
 echo '-- Preparando swap e baixando modelos do ComfyUI --'
@@ -142,12 +155,43 @@ done
 # portas 5432/6379 nativas de outros sistemas na VPS.
 docker compose --profile vps up -d --build
 
+# 4b. Watchdog do host: Docker nao reinicia um container apenas por estar
+# unhealthy. O timer verifica a cada minuto e reinicia somente o componente
+# afetado, sem derrubar o restante da plataforma.
+install -m 0755 scripts/vps-watchdog.sh /usr/local/sbin/ai-platform-watchdog
+cat >/etc/systemd/system/ai-platform-watchdog.service <<'EOF'
+[Unit]
+Description=AI Platform health recovery
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ai-platform-watchdog
+EOF
+cat >/etc/systemd/system/ai-platform-watchdog.timer <<'EOF'
+[Unit]
+Description=Run AI Platform health recovery every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+systemctl daemon-reload
+systemctl enable --now ai-platform-watchdog.timer
+
 # 5. Baixa os modelos dentro do container ollama (a primeira vez que sobe,
 # o volume esta vazio). Os 3 juntos cabem em disco tranquilo (~4GB) - o
 # OLLAMA_MAX_LOADED_MODELS=1 garante que so 1 fica carregado em RAM por
 # vez, trocando conforme a capacidade chamada (texto/visao/embed).
 echo '-- Baixando modelos dentro do container ollama (se ainda nao existirem) --'
 docker compose --profile vps exec -T ollama ollama pull qwen2.5:3b
+docker compose --profile vps exec -T ollama ollama pull qwen2.5:1.5b
 docker compose --profile vps exec -T ollama ollama pull moondream
 docker compose --profile vps exec -T ollama ollama pull nomic-embed-text
 

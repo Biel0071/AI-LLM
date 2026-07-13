@@ -9,6 +9,12 @@
 # ====================================================
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
+
+# Evita duas execucoes simultaneas da tarefa agendada durante uma recuperacao
+# mais demorada. O mutex e liberado automaticamente quando o processo termina.
+$watchdogMutex = [Threading.Mutex]::new($false, 'AIPlatformWatchdog')
+try { $watchdogLock = $watchdogMutex.WaitOne(0) } catch { $watchdogLock = $false }
+if (-not $watchdogLock) { exit 0 }
 $ProgressPreference = 'SilentlyContinue'
 
 $logDir = Join-Path $root "logs"

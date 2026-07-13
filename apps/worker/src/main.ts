@@ -18,9 +18,38 @@ const logger = pino({
 
 const prisma = new PrismaClient();
 let registry = createRegistryFromEnv(process.env);
-const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 4);
+const maxConcurrency = Math.max(1, Number(process.env.WORKER_CONCURRENCY ?? 4));
+let effectiveConcurrency = maxConcurrency;
 const prefix = process.env.QUEUE_PREFIX ?? 'aiplatform';
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
+const registryTtlMs = Math.max(1_000, Number(process.env.PROVIDER_REGISTRY_TTL_MS ?? 15_000));
+const heartbeatFile = process.env.WORKER_HEARTBEAT_FILE ?? '/tmp/aiplatform-worker-heartbeat';
+const globalConcurrency = Math.max(1, Number(process.env.GLOBAL_WORKER_CONCURRENCY ?? maxConcurrency));
+let registryLoadedAt = 0;
+
+class JobSemaphore {
+  private active = 0;
+  private readonly waiting: Array<() => void> = [];
+
+  constructor(private readonly limit: number) {}
+
+  async acquire(): Promise<() => void> {
+    if (this.active >= this.limit) {
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
+    this.active++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.active--;
+      this.waiting.shift()?.();
+    };
+  }
+}
+
+const jobSemaphore = new JobSemaphore(globalConcurrency);
+let registryRefresh: Promise<typeof registry> | undefined;
 
 async function loadRegistryFromDatabase() {
   const merged: Record<string, string | undefined> = { ...process.env };
@@ -46,8 +75,23 @@ async function loadRegistryFromDatabase() {
   return createRegistryFromEnv(merged);
 }
 
+async function getRegistry() {
+  if (Date.now() - registryLoadedAt < registryTtlMs) return registry;
+  if (!registryRefresh) {
+    registryRefresh = loadRegistryFromDatabase()
+      .then((next) => {
+        registry = next;
+        registryLoadedAt = Date.now();
+        return next;
+      })
+      .finally(() => { registryRefresh = undefined; });
+  }
+  return registryRefresh;
+}
+
 const queueNames = Object.keys(processors);
 const workers: Worker[] = [];
+const workersByQueue = new Map<string, Worker>();
 
 function connection() {
   const url = new URL(redisUrl);
@@ -70,8 +114,8 @@ async function markJob(
     provider: string;
     model: string;
     durationMs: number;
-    startedAt: Date;
-    finishedAt: Date;
+    startedAt: Date | null;
+    finishedAt: Date | null;
   }>,
 ): Promise<void> {
   if (!jobId) return;
@@ -117,12 +161,13 @@ for (const name of queueNames) {
     name,
     async (job) => {
       const jobId = (job.data as any).__jobId as string | undefined;
+      const releaseSlot = await jobSemaphore.acquire();
       logger.info({ queue: name, jobId }, 'job started');
       await markJob(jobId, { status: 'active', startedAt: new Date() });
       const start = Date.now();
       try {
-        registry = await loadRegistryFromDatabase();
-        const result = await processors[name](job, registry);
+        const activeRegistry = await getRegistry();
+        const result = await processors[name](job, activeRegistry);
         await persistGeneratedImages(jobId, job.data, result);
         await markJob(jobId, {
           status: 'completed',
@@ -137,30 +182,68 @@ for (const name of queueNames) {
         return result;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        const maxAttempts = Number(job.opts.attempts ?? 1);
+        const willRetry = job.attemptsMade + 1 < maxAttempts;
         await markJob(jobId, {
-          status: 'failed',
+          status: willRetry ? 'waiting' : 'failed',
           error: message.slice(0, 2000),
           durationMs: Date.now() - start,
-          finishedAt: new Date(),
+          startedAt: willRetry ? null : undefined,
+          finishedAt: willRetry ? null : new Date(),
         });
-        logger.error({ queue: name, jobId, err: message }, 'job failed');
+        logger[willRetry ? 'warn' : 'error'](
+          { queue: name, jobId, attempt: job.attemptsMade + 1, maxAttempts, err: message },
+          willRetry ? 'job failed; retry scheduled' : 'job failed permanently',
+        );
         throw err;
+      } finally {
+        releaseSlot();
       }
     },
-    { connection: connection(), prefix, concurrency: name === 'image' ? imageConcurrency : concurrency },
+    {
+      connection: connection(),
+      prefix,
+      concurrency: name === 'image' ? imageConcurrency : effectiveConcurrency,
+      lockDuration: 120_000,
+      stalledInterval: 30_000,
+      maxStalledCount: 2,
+      drainDelay: 5,
+    },
   );
   worker.on('error', (err) => logger.error({ queue: name, err: err.message }, 'worker error'));
+  worker.on('stalled', (jobId) => {
+    logger.warn({ queue: name, jobId }, 'stalled job recovered by BullMQ');
+    void markJob(String(jobId), { status: 'waiting', startedAt: null, finishedAt: null });
+  });
   workers.push(worker);
+  workersByQueue.set(name, worker);
 }
+
+// Ajusta apenas filas leves (texto/SEO/OCR/etc.) conforme a memoria livre.
+// Imagem continua serial, respeitando a capacidade real de uma unica GPU.
+function tuneConcurrency(): void {
+  if (process.env.ADAPTIVE_CONCURRENCY === 'false') return;
+  const freeRatio = os.freemem() / Math.max(1, os.totalmem());
+  const target = freeRatio < 0.12 ? 1 : freeRatio < 0.25 ? Math.max(1, Math.ceil(maxConcurrency / 2)) : maxConcurrency;
+  if (target === effectiveConcurrency) return;
+  effectiveConcurrency = target;
+  for (const [name, worker] of workersByQueue) {
+    if (name !== 'image') worker.concurrency = target;
+  }
+  logger.warn({ freeRatio: Number(freeRatio.toFixed(3)), concurrency: target }, 'worker concurrency adjusted to available memory');
+}
+const resourceTimer = setInterval(tuneConcurrency, 15_000);
+tuneConcurrency();
 
 // ---------- Heartbeat ----------
 const hostname = os.hostname();
 async function heartbeat(): Promise<void> {
+  await writeFile(heartbeatFile, String(Date.now()));
   await prisma.workerNode
     .upsert({
       where: { hostname_queues: { hostname, queues: queueNames.join(',') } },
-      create: { hostname, queues: queueNames.join(','), concurrency },
-      update: { lastHeartbeat: new Date(), concurrency },
+      create: { hostname, queues: queueNames.join(','), concurrency: effectiveConcurrency },
+      update: { lastHeartbeat: new Date(), concurrency: effectiveConcurrency },
     })
     .catch((err) => logger.warn({ err }, 'heartbeat failed'));
 }
@@ -174,7 +257,7 @@ void safeHeartbeat();
 const heartbeatTimer = setInterval(() => void safeHeartbeat(), 30_000);
 
 logger.info(
-  { queues: queueNames, concurrency, providers: registry.list().map((p) => p.name) },
+  { queues: queueNames, concurrency: maxConcurrency, globalConcurrency, adaptive: process.env.ADAPTIVE_CONCURRENCY !== 'false', providers: registry.list().map((p) => p.name) },
   'AI Platform worker online',
 );
 
@@ -184,6 +267,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   logger.info({ signal }, 'shutting down workers');
   clearInterval(heartbeatTimer);
+  clearInterval(resourceTimer);
   await Promise.all(workers.map((w) => w.close()));
   await prisma.$disconnect();
   process.exit(0);
