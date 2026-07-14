@@ -228,3 +228,8 @@ Jobs individuais, lotes e texto assincrono aceitam callback:
 A entrega reversa ocorre em uma fila `webhook` separada, com 5 tentativas e backoff exponencial. O header `x-ai-platform-event` vale `job.completed` ou `job.failed`. Valide `x-ai-platform-signature`, calculado como `sha256=HMAC_SHA256(secret, corpo_raw)`, antes de aplicar o resultado. A URL deve usar HTTPS e nao pode resolver para rede privada. Para integracao interna deliberada, `WEBHOOK_ALLOW_HTTP=true` libera HTTP, mas enderecos privados continuam bloqueados.
 
 Para populacoes de ate 10.000 itens, envie uma unica chamada a `/v1/jobs/batch`, inclua um callback em cada item e nao mantenha conexoes HTTP abertas. O sistema deduplica jobs equivalentes, processa na velocidade sustentavel da maquina e devolve cada conclusao ao sistema de origem.
+### Estado operacional da populacao
+
+Toda rota assincrona retorna imediatamente `populationStatus: "populating"` e uma mensagem informando que a demanda foi organizada sem bloquear a aplicacao. Use `POST /v1/jobs/status` para acompanhar um lote; a resposta inclui `counts`, `progressPercent`, `uniqueJobs`, `duplicateReferences`, aceitos e rejeitados. Use `GET /v1/jobs/stats` para o estado global (`idle` ou `populating`), quantidade aguardando/ativa, `estimatedDrainMs` e `estimatedFinishAt`.
+
+O frontend deve exibir `message` diretamente e parar o acompanhamento quando o status for `completed`, `completed_with_errors` ou `failed`.

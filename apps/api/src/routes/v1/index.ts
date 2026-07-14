@@ -28,6 +28,7 @@ import { enqueue, enqueueAndWait, enqueueWithTiming, QueueName, queueStats, queu
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { persistImageResponse } from '../../services/image-storage.service';
+import { populationSummary, queuePopulationSummary } from '../../services/population.service';
 
 let activeSynchronousText = 0;
 function acquireSynchronousTextSlot(): (() => void) | undefined {
@@ -95,7 +96,10 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
         projectId: req.auth?.projectId,
         callback: body.callback,
       });
-      return reply.code(202).send({ success: true, ...queued, status: 'waiting', execution: 'async' });
+      return reply.code(202).send({
+        success: true, ...queued, status: 'waiting', execution: 'async',
+        populationStatus: 'populating', message: 'Sistema esta populando; a demanda foi organizada na fila de texto.',
+      });
     }
     try {
       return await execute('text', body, (p) => p.generateText(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -115,7 +119,10 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const body = imageSchema.parse(req.body);
     if (!body.wait) {
       const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-      return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
+      return reply.code(202).send({
+        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
+        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+      });
     }
     const response = await execute('image', body, (p) => p.generateImage(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, prompt: body.prompt, kind: body.image ? 'image-to-image' : 'text-to-image', seed: body.seed });
@@ -131,7 +138,10 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       // GET /v1/jobs/:id ate status=completed, sem nunca segurar uma conexao
       // HTTP proxiada por mais de 100s.
       const queued = await enqueueWithTiming('image', { ...body, image: body.image, denoise: body.strength }, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-      return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
+      return reply.code(202).send({
+        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
+        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+      });
     }
     const response = await execute('image', body, (p) => (p as unknown as ImageProvider).imageToImage(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, prompt: body.prompt, kind: 'image-to-image', seed: body.seed });
@@ -144,7 +154,10 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const raw = imageGallerySchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'gallery' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-    return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
+    return reply.code(202).send({
+        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
+        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+      });
   });
 
   // ---------- Angulo real de camera (Stable Zero123 - novel view synthesis) ----------
@@ -154,21 +167,30 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const raw = multiAngleSchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'multiangle' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-    return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
+    return reply.code(202).send({
+        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
+        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+      });
   });
 
   app.post('/video-to-image', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
     const raw = videoToImageSchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'video-to-image' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-    return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
+    return reply.code(202).send({
+        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
+        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+      });
   });
 
   app.post('/video', { config: rlConfig, schema: { tags: ['v1', 'video'] } }, async (req, reply) => {
     const raw = videoToImageSchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'video-to-image' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-    return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
+    return reply.code(202).send({
+        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
+        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+      });
   });
   app.post('/remove-background', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req) => {
     const raw = removeBackgroundSchema.parse(req.body); const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider };
@@ -199,7 +221,10 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const body = upscaleSchema.parse(req.body);
     if (!body.wait) {
       const queued = await enqueueWithTiming('image', { ...body, __kind: 'upscale' }, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-      return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
+      return reply.code(202).send({
+        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
+        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+      });
     }
     const response = await execute('upscale', body, (p) => p.upscale(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, kind: 'upscale' });
@@ -226,7 +251,10 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const body = ocrSchema.parse(req.body);
     if (!body.wait) {
       const queued = await enqueueWithTiming('ocr', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-      return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
+      return reply.code(202).send({
+        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
+        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+      });
     }
     const { result } = await enqueueAndWait('ocr', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return result;
@@ -241,7 +269,10 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       priority: body.priority,
       callback: body.callback,
     });
-    return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
+    return reply.code(202).send({
+      success: true, ...queued, status: 'waiting', populationStatus: 'populating',
+      message: 'Sistema esta populando; job organizado na fila ' + body.type + '.',
+    });
   });
 
   app.get('/jobs/:id', { schema: { tags: ['v1'] } }, async (req, reply) => {
@@ -253,10 +284,13 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const queue = job.status === 'waiting' || job.status === 'active'
       ? await queueTiming(job.queue as QueueName, job.id)
       : undefined;
+    const population = populationSummary([{ id: job.id, status: job.status }]);
     return {
       success: true,
       jobId: job.id,
       status: job.status,
+      populationStatus: population.populationStatus,
+      message: population.message,
       result: job.result,
       error: job.error,
       durationMs: job.durationMs,
@@ -297,8 +331,23 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
         else rejected.push({ index: result.index, error: result.error });
       }
     }
+    const [queues, populationJobs] = await Promise.all([
+      queueStats(),
+      prisma.job.findMany({
+        where: { id: { in: Array.from(new Set(jobIds)) } },
+        select: { id: true, status: true },
+      }),
+    ]);
+    const population = populationSummary(populationJobs, body.jobs.length, jobIds.length, rejected.length);
     return reply.code(rejected.length ? 207 : 202).send({
-      success: rejected.length === 0, jobIds, count: jobIds.length, rejected, queues: await queueStats(),
+      success: rejected.length === 0,
+      status: population.populationStatus,
+      message: population.message,
+      population,
+      jobIds,
+      count: jobIds.length,
+      rejected,
+      queues,
     });
   });
 
@@ -315,7 +364,8 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       },
       select: { id: true, status: true, result: true, error: true, finishedAt: true },
     });
-    return { success: true, jobs };
+    const population = populationSummary(jobs, body.ids.length, jobs.length, body.ids.length - jobs.length);
+    return { success: true, status: population.populationStatus, message: population.message, population, jobs };
   });
 
   // ---------- Resumo agregado da fila (sem precisar de admin) ----------
@@ -323,7 +373,8 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // pra mostrar barra de progresso/ETA de um lote grande sem precisar
   // consultar cada job individualmente.
   app.get('/jobs/stats', { schema: { tags: ['v1'] } }, async () => {
-    return { success: true, queues: await queueStats() };
+    const queues = await queueStats();
+    return { success: true, population: queuePopulationSummary(queues), queues };
   });
 
   app.get('/images/:id/file', { schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
