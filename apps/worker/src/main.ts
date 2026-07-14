@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createDecipheriv, createHash } from 'node:crypto';
-import { Worker } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
 import pino from 'pino';
 import { PrismaClient } from '@prisma/client';
 import { createRegistryFromEnv } from '@ai-platform/shared';
@@ -135,6 +135,38 @@ function connection() {
   };
 }
 
+interface ReverseCallback {
+  url: string;
+  secret?: string;
+}
+
+const webhookQueue = new Queue('webhook', {
+  connection: connection(),
+  prefix,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 5_000 },
+    removeOnComplete: { age: 24 * 3600, count: 2_000 },
+    removeOnFail: { age: 7 * 24 * 3600, count: 5_000 },
+  },
+});
+
+async function enqueueReverseCallback(
+  jobId: string | undefined,
+  callback: ReverseCallback | undefined,
+  event: 'job.completed' | 'job.failed',
+  body: Record<string, unknown>,
+): Promise<void> {
+  if (!jobId || !callback?.url) return;
+  try {
+    await webhookQueue.add('webhook', { ...callback, event, body }, {
+      jobId: `${jobId}-${event.replace('.', '-')}`,
+    });
+  } catch (err) {
+    logger.error({ jobId, event, err }, 'failed to enqueue reverse callback');
+  }
+}
+
 async function markJob(
   jobId: string | undefined,
   data: Partial<{
@@ -199,16 +231,22 @@ for (const name of queueNames) {
         const activeRegistry = await getRegistry();
         const result = await processors[name](job, activeRegistry);
         await persistGeneratedImages(jobId, job.data, result);
+        const durationMs = Date.now() - start;
+        const finishedAt = new Date();
         await markJob(jobId, {
           status: 'completed',
           error: null,
           result: result as unknown as object,
           provider: result.provider,
           model: result.model,
-          durationMs: Date.now() - start,
-          finishedAt: new Date(),
+          durationMs,
+          finishedAt,
         });
-        logger.info({ queue: name, jobId, ms: Date.now() - start }, 'job completed');
+        await enqueueReverseCallback(jobId, (job.data as any).__callback, 'job.completed', {
+          event: 'job.completed', jobId, queue: name, status: 'completed', result,
+          provider: result.provider, model: result.model, durationMs, finishedAt: finishedAt.toISOString(),
+        });
+        logger.info({ queue: name, jobId, ms: durationMs }, 'job completed');
         return result;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -217,13 +255,21 @@ for (const name of queueNames) {
         const permanentFailure = /Invalid argument returned 22|invalid image|unsupported|validation|unauthori[sz]ed|forbidden|authentication|api[ -]?key|model.*not found|(?:http|status)\s*(?:400|401|403|404)/i.test(message);
         if (permanentFailure) job.discard();
         const willRetry = !permanentFailure && job.attemptsMade + 1 < maxAttempts;
+        const durationMs = Date.now() - start;
+        const finishedAt = willRetry ? null : new Date();
         await markJob(jobId, {
           status: willRetry ? 'waiting' : 'failed',
           error: message.slice(0, 2000),
-          durationMs: Date.now() - start,
+          durationMs,
           startedAt: willRetry ? null : undefined,
-          finishedAt: willRetry ? null : new Date(),
+          finishedAt,
         });
+        if (!willRetry) {
+          await enqueueReverseCallback(jobId, (job.data as any).__callback, 'job.failed', {
+            event: 'job.failed', jobId, queue: name, status: 'failed', error: message.slice(0, 2000),
+            durationMs, finishedAt: finishedAt?.toISOString(),
+          });
+        }
         logger[willRetry ? 'warn' : 'error'](
           { queue: name, jobId, attempt: job.attemptsMade + 1, maxAttempts, err: message },
           willRetry ? 'job failed; retry scheduled' : 'job failed permanently',
@@ -315,6 +361,7 @@ async function shutdown(signal: string): Promise<void> {
   clearInterval(heartbeatTimer);
   clearInterval(resourceTimer);
   await Promise.all(workers.map((w) => w.close()));
+  await webhookQueue.close();
   await prisma.$disconnect();
   process.exit(0);
 }

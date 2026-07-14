@@ -15,6 +15,12 @@ export interface UsageRecord {
 }
 
 export class UsageService {
+  private readonly pending: UsageRecord[] = [];
+  private draining = false;
+  private dropped = 0;
+  private static readonly MAX_PENDING = 50_000;
+  private static readonly WRITE_CONCURRENCY = 10;
+
   /** Custo estimado a partir da tabela ModelConfig (custo por 1k tokens). */
   private async estimateCost(provider: string, model: string, tokens?: TokenUsage): Promise<number> {
     if (!tokens?.prompt && !tokens?.completion) return 0;
@@ -28,9 +34,37 @@ export class UsageService {
     );
   }
 
-  /** Grava log da requisicao + agregado diario. Fire-and-forget. */
+  /**
+   * Grava auditoria fora do caminho HTTP, mas com concorrencia limitada.
+   * Evita milhares de Promises/queries simultaneas em picos de populacao.
+   */
   record(record: UsageRecord): void {
-    void this.persist(record).catch((err) => logger.warn({ err }, 'usage record failed'));
+    if (this.pending.length >= UsageService.MAX_PENDING) {
+      this.dropped++;
+      if (this.dropped === 1 || this.dropped % 1_000 === 0) {
+        logger.error({ dropped: this.dropped }, 'usage buffer full; records dropped');
+      }
+      return;
+    }
+    this.pending.push(record);
+    if (!this.draining) void this.drain();
+  }
+
+  private async drain(): Promise<void> {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      while (this.pending.length > 0) {
+        const batch = this.pending.splice(0, UsageService.WRITE_CONCURRENCY);
+        await Promise.all(batch.map((record) =>
+          this.persist(record).catch((err) => logger.warn({ err }, 'usage record failed')),
+        ));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    } finally {
+      this.draining = false;
+      if (this.pending.length > 0) void this.drain();
+    }
   }
 
   private async persist(record: UsageRecord): Promise<void> {

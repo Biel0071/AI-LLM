@@ -1,4 +1,7 @@
 import { execFile } from 'node:child_process';
+import { createHmac } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -366,6 +369,54 @@ export const classificationProcessor: ProcessorFn = async (job, registry) => {
   return { ...res, result: { category, raw } };
 };
 
+interface WebhookJobData {
+  url: string;
+  secret?: string;
+  event: 'job.completed' | 'job.failed';
+  body: Record<string, unknown>;
+}
+
+function isPrivateAddress(address: string): boolean {
+  if (address === '::1' || address === '0.0.0.0' || address.startsWith('fc') || address.startsWith('fd') || address.startsWith('fe80:')) return true;
+  if (isIP(address) !== 4) return false;
+  const [a, b] = address.split('.').map(Number);
+  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+export const webhookProcessor: ProcessorFn = async (job) => {
+  const data = job.data as WebhookJobData;
+  const target = new URL(data.url);
+  const allowHttp = process.env.WEBHOOK_ALLOW_HTTP === 'true';
+  if (target.protocol !== 'https:' && !(allowHttp && target.protocol === 'http:')) {
+    throw new Error('webhook URL must use HTTPS');
+  }
+  const addresses = await lookup(target.hostname, { all: true });
+  if (addresses.some(({ address }) => isPrivateAddress(address))) {
+    throw new Error('webhook URL resolves to a private address');
+  }
+  const rawBody = JSON.stringify(data.body);
+  const secret = data.secret ?? process.env.WEBHOOK_SIGNING_SECRET;
+  const signature = secret ? `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}` : undefined;
+  const started = Date.now();
+  const response = await fetch(target, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'user-agent': 'AI-Platform-Webhook/1.0',
+      'x-ai-platform-event': data.event,
+      ...(signature ? { 'x-ai-platform-signature': signature } : {}),
+    },
+    body: rawBody,
+    signal: AbortSignal.timeout(Math.max(1_000, Number(process.env.WEBHOOK_TIMEOUT_MS ?? 10_000))),
+  });
+  if (!response.ok) throw new Error(`webhook HTTP ${response.status}`);
+  return ok({
+    provider: 'webhook', model: 'http-callback', executionTime: Date.now() - started,
+    tokens: {}, result: { delivered: true, status: response.status },
+  });
+};
+
 export const processors: Record<string, ProcessorFn> = {
   text: textProcessor,
   image: imageProcessor,
@@ -374,4 +425,5 @@ export const processors: Record<string, ProcessorFn> = {
   seo: seoProcessor,
   translation: translationProcessor,
   classification: classificationProcessor,
+  webhook: webhookProcessor,
 };

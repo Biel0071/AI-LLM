@@ -5,6 +5,12 @@ const optionalAutoString = z.preprocess(
   z.string().min(1).optional(),
 );
 
+export const callbackSchema = z.object({
+  url: z.string().url().max(2_048),
+  /** Segredo usado para assinar o corpo em x-ai-platform-signature. */
+  secret: z.string().min(16).max(512).optional(),
+});
+
 const common = {
   provider: optionalAutoString,
   model: optionalAutoString,
@@ -17,6 +23,7 @@ const common = {
   cache: z.boolean().optional().default(true),
   fallback: z.boolean().optional().default(true),
   projectId: z.string().min(1).optional(),
+  callback: callbackSchema.optional(),
 };
 
 export const textSchema = z.object({
@@ -25,6 +32,8 @@ export const textSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().min(1).max(128_000).optional(),
   json: z.boolean().optional(),
+  /** auto enfileira durante picos; sync nunca espera em memoria; async sempre enfileira. */
+  execution: z.enum(['auto', 'sync', 'async']).optional().default('auto'),
   ...common,
 });
 
@@ -154,6 +163,7 @@ export const jobSchema = z.object({
   payload: z.record(z.unknown()),
   priority: z.number().int().min(1).max(10).optional(),
   projectId: z.string().min(1).optional(),
+  callback: callbackSchema.optional(),
 });
 
 export const seoSchema = z.object({

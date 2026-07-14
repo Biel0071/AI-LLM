@@ -35,6 +35,7 @@ const envSchema = z.object({
   QUEUE_PREFIX: z.string().default('aiplatform'),
   JOB_WAIT_TIMEOUT_MS: z.coerce.number().default(180_000),
   WORKER_CONCURRENCY: z.coerce.number().default(4),
+  SYNC_TEXT_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
   BATCH_MAX_JOBS: z.coerce.number().int().min(1).max(10_000).default(10_000),
   BATCH_ENQUEUE_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(25),
   OCR_ENGINE: z.enum(['vision', 'tesseract']).default('vision'),

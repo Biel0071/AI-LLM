@@ -204,3 +204,27 @@ Deno.serve(async (req) => fetch(`${Deno.env.get('AI_PLATFORM_URL')}/v1/chat`, {
   body: await req.text(),
 }));
 ```
+## Carga alta e requisicao reversa
+
+`POST /v1/text` aceita `execution`:
+
+- `auto` (padrao): responde normalmente quando existe capacidade sincrona; durante pico responde HTTP 202 com `jobId` e transfere o trabalho para BullMQ.
+- `async`: sempre responde 202 imediatamente.
+- `sync`: nunca fica aguardando memoria; se o slot estiver ocupado responde 429.
+
+Jobs individuais, lotes e texto assincrono aceitam callback:
+
+```json
+{
+  "type": "seo",
+  "payload": { "product": "Tenis Runner", "cache": true },
+  "callback": {
+    "url": "https://seu-sistema.com/api/ai/callback",
+    "secret": "segredo-com-no-minimo-16-caracteres"
+  }
+}
+```
+
+A entrega reversa ocorre em uma fila `webhook` separada, com 5 tentativas e backoff exponencial. O header `x-ai-platform-event` vale `job.completed` ou `job.failed`. Valide `x-ai-platform-signature`, calculado como `sha256=HMAC_SHA256(secret, corpo_raw)`, antes de aplicar o resultado. A URL deve usar HTTPS e nao pode resolver para rede privada. Para integracao interna deliberada, `WEBHOOK_ALLOW_HTTP=true` libera HTTP, mas enderecos privados continuam bloqueados.
+
+Para populacoes de ate 10.000 itens, envie uma unica chamada a `/v1/jobs/batch`, inclua um callback em cada item e nao mantenha conexoes HTTP abertas. O sistema deduplica jobs equivalentes, processa na velocidade sustentavel da maquina e devolve cada conclusao ao sistema de origem.

@@ -12,6 +12,7 @@ export const QUEUE_NAMES = [
   'seo',
   'translation',
   'classification',
+  'webhook',
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -50,11 +51,17 @@ export function getQueueEvents(name: QueueName): QueueEvents {
   return events;
 }
 
+export interface CallbackConfig {
+  url: string;
+  secret?: string;
+}
+
 export interface EnqueueOptions {
   tenantId?: string;
   projectId?: string;
   priority?: number;
   delayMs?: number;
+  callback?: CallbackConfig;
 }
 
 export async function enqueue(
@@ -62,9 +69,11 @@ export async function enqueue(
   payload: Record<string, unknown>,
   opts: EnqueueOptions = {},
 ): Promise<string> {
-  const shouldDeduplicate = payload.cache !== false;
+  const { callback: payloadCallback, execution: _execution, ...queuePayload } = payload;
+  const callback = opts.callback ?? payloadCallback as CallbackConfig | undefined;
+  const shouldDeduplicate = queuePayload.cache !== false;
   const dedupKey = shouldDeduplicate
-    ? cacheKey('job', name, `${opts.tenantId ?? 'global'}:${opts.projectId ?? 'all'}`, payload)
+    ? cacheKey('job', name, `${opts.tenantId ?? 'global'}:${opts.projectId ?? 'all'}`, queuePayload)
     : undefined;
 
   const data = {
@@ -75,7 +84,7 @@ export async function enqueue(
     status: 'waiting',
     priority: opts.priority ?? 5,
     dedupKey,
-    payload: payload as object,
+    payload: queuePayload as object,
   };
 
   let record: { id: string };
@@ -110,7 +119,7 @@ export async function enqueue(
   try {
     await getQueue(name).add(
       name,
-      { ...payload, __jobId: record.id, __tenantId: opts.tenantId, __projectId: opts.projectId },
+      { ...queuePayload, __jobId: record.id, __tenantId: opts.tenantId, __projectId: opts.projectId, __callback: callback },
       { jobId: record.id, priority: opts.priority ?? 5, delay: opts.delayMs },
     );
     return record.id;
@@ -191,6 +200,7 @@ function concurrencyFor(name: QueueName): number {
 }
 
 function fallbackDurationFor(name: QueueName): number {
+  if (name === 'webhook') return 1_000;
   if (name === 'image') return 35_000;
   if (name === 'ocr') return 15_000;
   return 7_000;

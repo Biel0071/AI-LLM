@@ -29,6 +29,17 @@ import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { persistImageResponse } from '../../services/image-storage.service';
 
+let activeSynchronousText = 0;
+function acquireSynchronousTextSlot(): (() => void) | undefined {
+  if (activeSynchronousText >= env.SYNC_TEXT_CONCURRENCY) return undefined;
+  activeSynchronousText++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activeSynchronousText--;
+  };
+}
 export async function v1Routes(app: FastifyInstance): Promise<void> {
   // Todas as rotas /v1 exigem API key + rate limit por chave
   app.addHook('onRequest', app.requireApiKey);
@@ -72,9 +83,25 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   };
 
   // ---------- Texto ----------
-  app.post('/text', { config: rlConfig, schema: { tags: ['v1'] } }, async (req) => {
+  app.post('/text', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = textSchema.parse(req.body);
-    return execute('text', body, (p) => p.generateText(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    const release = body.execution === 'async' ? undefined : acquireSynchronousTextSlot();
+    if (!release) {
+      if (body.execution === 'sync') {
+        return reply.code(429).send(fail('SYNC_CAPACITY_REACHED', 'Capacidade sincrona ocupada; use execution=auto ou async'));
+      }
+      const queued = await enqueueWithTiming('text', body, {
+        tenantId: req.auth?.tenantId,
+        projectId: req.auth?.projectId,
+        callback: body.callback,
+      });
+      return reply.code(202).send({ success: true, ...queued, status: 'waiting', execution: 'async' });
+    }
+    try {
+      return await execute('text', body, (p) => p.generateText(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    } finally {
+      release();
+    }
   });
 
   // ---------- Chat ----------
@@ -212,6 +239,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       tenantId: req.auth?.tenantId,
       projectId: req.auth?.projectId,
       priority: body.priority,
+      callback: body.callback,
     });
     return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
   });
@@ -258,6 +286,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
             tenantId: req.auth?.tenantId,
             projectId: req.auth?.projectId,
             priority: j.priority,
+            callback: j.callback,
           }) };
         } catch (error) {
           return { ok: false as const, index: offset + index, error: error instanceof Error ? error.message : String(error) };

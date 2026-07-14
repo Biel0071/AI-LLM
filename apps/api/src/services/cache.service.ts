@@ -20,6 +20,10 @@ export interface CachedPayload {
  * persistencia/auditoria (prompt, hash, resposta, tempo, tokens).
  */
 export class CacheService {
+  private readonly pendingHits = new Map<string, number>();
+  private hitTimer?: NodeJS.Timeout;
+  private hitFlush?: Promise<void>;
+
   buildKey(capability: string, provider: string, model: string, input: unknown): string {
     return cacheKey(capability, provider, model, input);
   }
@@ -85,9 +89,35 @@ export class CacheService {
   }
 
   private registerHit(hash: string): void {
-    prisma.cacheEntry
-      .update({ where: { hash }, data: { hits: { increment: 1 }, lastHitAt: new Date() } })
-      .catch(() => undefined);
+    this.pendingHits.set(hash, (this.pendingHits.get(hash) ?? 0) + 1);
+    if (this.hitTimer) return;
+    this.hitTimer = setTimeout(() => {
+      this.hitTimer = undefined;
+      void this.flushHits();
+    }, 1_000);
+    this.hitTimer.unref();
+  }
+
+  private async flushHits(): Promise<void> {
+    if (this.hitFlush || this.pendingHits.size === 0) return this.hitFlush;
+    const batch = Array.from(this.pendingHits.entries());
+    this.pendingHits.clear();
+    this.hitFlush = prisma.$transaction(batch.map(([hash, count]) =>
+      prisma.cacheEntry.update({
+        where: { hash },
+        data: { hits: { increment: count }, lastHitAt: new Date() },
+      }),
+    )).then(() => undefined).catch((err) => {
+      for (const [hash, count] of batch) this.pendingHits.set(hash, (this.pendingHits.get(hash) ?? 0) + count);
+      logger.warn({ err }, 'cache hit flush failed');
+    }).finally(() => {
+      this.hitFlush = undefined;
+      if (this.pendingHits.size > 0 && !this.hitTimer) {
+        this.hitTimer = setTimeout(() => { this.hitTimer = undefined; void this.flushHits(); }, 1_000);
+        this.hitTimer.unref();
+      }
+    });
+    return this.hitFlush;
   }
 
   async stats(): Promise<{ entries: number; totalHits: number; redisKeys: number }> {

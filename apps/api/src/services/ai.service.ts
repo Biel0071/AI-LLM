@@ -36,6 +36,7 @@ const fallbackOrder = (process.env.FREE_PROVIDER_ORDER ??
   .split(',')
   .map((name) => name.trim())
   .filter(Boolean);
+const inFlight = new Map<string, Promise<ProviderResult<unknown>>>();
 const providerCircuit = new ProviderCircuitBreaker(
   Math.max(1, Number(process.env.PROVIDER_FAILURE_THRESHOLD ?? 2)),
   Math.max(1_000, Number(process.env.PROVIDER_COOLDOWN_MS ?? 30_000)),
@@ -114,7 +115,7 @@ export async function execute<T>(
     ? [registry.resolve(capability, effectiveRequest.provider)]
     : registry.resolveCandidates(capability, effectiveRequest.provider, fallbackOrder);
   const useCache = ctx.cache !== false && effectiveRequest.cache !== false;
-  const { provider: _provider, cache: _cache, wait: _wait, fallback: _fallback, ...cacheInput } = effectiveRequest;
+  const { provider: _provider, cache: _cache, wait: _wait, fallback: _fallback, callback: _callback, execution: _execution, ...cacheInput } = effectiveRequest;
   let lastError: unknown;
 
   const readyCandidates = candidates.filter((provider) => !providerCircuit.isOpen(`${provider.name}:${capability}`));
@@ -157,9 +158,32 @@ export async function execute<T>(
       continue;
     }
 
+    if (useCache) {
+      const sharedCall = inFlight.get(hash) as Promise<ProviderResult<T>> | undefined;
+      if (sharedCall) {
+        try {
+          const res = await sharedCall;
+          metrics.requests.inc({ capability, provider: provider.name, cached: 'true', status: 'ok' });
+          usageService.record({
+            tenantId: ctx.tenantId, capability, provider: provider.name, model: res.model,
+            cached: true, success: true, durationMs: 0, tokens: res.tokens,
+          });
+          return ok({
+            provider: provider.name, model: res.model, executionTime: 0,
+            tokens: res.tokens, cached: true, result: res.result,
+          });
+        } catch (err) {
+          lastError = err;
+          continue;
+        }
+      }
+    }
+
     const start = Date.now();
+    const providerCall = Promise.resolve().then(() => call(provider));
+    if (useCache) inFlight.set(hash, providerCall as Promise<ProviderResult<unknown>>);
     try {
-      const res = await call(provider);
+      const res = await providerCall;
       const durationMs = Date.now() - start;
       providerCircuit.recordSuccess(circuitKey);
       const response = ok({
@@ -189,7 +213,7 @@ export async function execute<T>(
         const promptText = typeof request.prompt === 'string'
           ? request.prompt
           : JSON.stringify(request.messages ?? request.input ?? '').slice(0, 10_000);
-        void cacheService.set({ hash, capability, prompt: promptText, response });
+        await cacheService.set({ hash, capability, prompt: promptText, response });
       }
       return response;
     } catch (err) {
@@ -208,6 +232,8 @@ export async function execute<T>(
         durationMs,
       });
       logger.warn({ capability, provider: provider.name, circuitOpenUntil: circuit.openUntil || undefined, err }, 'provider failed; trying fallback');
+    } finally {
+      if (useCache && inFlight.get(hash) === providerCall) inFlight.delete(hash);
     }
   }
 
