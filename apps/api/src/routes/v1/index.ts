@@ -24,7 +24,7 @@ import {
   visionSchema,
 } from '@ai-platform/shared';
 import { execute, registry } from '../../services/ai.service';
-import { enqueue, enqueueAndWait, QueueName, queueStats } from '../../services/queue.service';
+import { enqueue, enqueueAndWait, enqueueWithTiming, QueueName, queueStats, queueTiming } from '../../services/queue.service';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { persistImageResponse } from '../../services/image-storage.service';
@@ -87,8 +87,8 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   app.post('/image', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = imageSchema.parse(req.body);
     if (!body.wait) {
-      const jobId = await enqueue('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-      return reply.code(202).send({ success: true, jobId, status: 'waiting' });
+      const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+      return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
     }
     const response = await execute('image', body, (p) => p.generateImage(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, prompt: body.prompt, kind: body.image ? 'image-to-image' : 'text-to-image', seed: body.seed });
@@ -103,8 +103,8 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       // ficar pronta. wait:false devolve o jobId na hora; o chamador consulta
       // GET /v1/jobs/:id ate status=completed, sem nunca segurar uma conexao
       // HTTP proxiada por mais de 100s.
-      const jobId = await enqueue('image', { ...body, image: body.image, denoise: body.strength }, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-      return reply.code(202).send({ success: true, jobId, status: 'waiting' });
+      const queued = await enqueueWithTiming('image', { ...body, image: body.image, denoise: body.strength }, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+      return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
     }
     const response = await execute('image', body, (p) => (p as unknown as ImageProvider).imageToImage(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, prompt: body.prompt, kind: 'image-to-image', seed: body.seed });
@@ -116,8 +116,8 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   app.post('/image-gallery', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
     const raw = imageGallerySchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'gallery' };
-    const jobId = await enqueue('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-    return reply.code(202).send({ success: true, jobId, status: 'waiting' });
+    const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
   });
 
   // ---------- Angulo real de camera (Stable Zero123 - novel view synthesis) ----------
@@ -126,22 +126,22 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   app.post('/image-multiangle', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
     const raw = multiAngleSchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'multiangle' };
-    const jobId = await enqueue('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-    return reply.code(202).send({ success: true, jobId, status: 'waiting' });
+    const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
   });
 
   app.post('/video-to-image', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
     const raw = videoToImageSchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'video-to-image' };
-    const jobId = await enqueue('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-    return reply.code(202).send({ success: true, jobId, status: 'waiting' });
+    const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
   });
 
   app.post('/video', { config: rlConfig, schema: { tags: ['v1', 'video'] } }, async (req, reply) => {
     const raw = videoToImageSchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'video-to-image' };
-    const jobId = await enqueue('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-    return reply.code(202).send({ success: true, jobId, status: 'waiting' });
+    const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
   });
   app.post('/remove-background', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req) => {
     const raw = removeBackgroundSchema.parse(req.body); const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider };
@@ -171,8 +171,8 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   app.post('/upscale', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = upscaleSchema.parse(req.body);
     if (!body.wait) {
-      const jobId = await enqueue('image', { ...body, __kind: 'upscale' }, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-      return reply.code(202).send({ success: true, jobId, status: 'waiting' });
+      const queued = await enqueueWithTiming('image', { ...body, __kind: 'upscale' }, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+      return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
     }
     const response = await execute('upscale', body, (p) => p.upscale(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, kind: 'upscale' });
@@ -198,8 +198,8 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   app.post('/ocr', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = ocrSchema.parse(req.body);
     if (!body.wait) {
-      const jobId = await enqueue('ocr', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
-      return reply.code(202).send({ success: true, jobId, status: 'waiting' });
+      const queued = await enqueueWithTiming('ocr', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+      return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
     }
     const { result } = await enqueueAndWait('ocr', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return result;
@@ -208,12 +208,12 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // ---------- Jobs assincronos (SEO, traducao, classificacao...) ----------
   app.post('/jobs', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = jobSchema.parse(req.body);
-    const jobId = await enqueue(body.type as QueueName, body.payload, {
+    const queued = await enqueueWithTiming(body.type as QueueName, body.payload, {
       tenantId: req.auth?.tenantId,
       projectId: req.auth?.projectId,
       priority: body.priority,
     });
-    return reply.code(202).send({ success: true, jobId, status: 'waiting' });
+    return reply.code(202).send({ success: true, ...queued, status: 'waiting' });
   });
 
   app.get('/jobs/:id', { schema: { tags: ['v1'] } }, async (req, reply) => {
@@ -222,6 +222,9 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     if (!job || (job.tenantId && job.tenantId !== req.auth?.tenantId) || (req.auth?.projectId && job.projectId !== req.auth.projectId)) {
       return reply.code(404).send(fail('JOB_NOT_FOUND', `job ${id} nao encontrado`));
     }
+    const queue = job.status === 'waiting' || job.status === 'active'
+      ? await queueTiming(job.queue as QueueName, job.id)
+      : undefined;
     return {
       success: true,
       jobId: job.id,
@@ -231,6 +234,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       durationMs: job.durationMs,
       createdAt: job.createdAt,
       finishedAt: job.finishedAt,
+      queue,
     };
   });
 
@@ -254,7 +258,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
         }),
       ),
     );
-    return reply.code(202).send({ success: true, jobIds, count: jobIds.length });
+    return reply.code(202).send({ success: true, jobIds, count: jobIds.length, queues: await queueStats() });
   });
 
   // ---------- Status de varios jobs numa unica chamada ----------

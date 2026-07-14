@@ -33,6 +33,10 @@ Crie uma Edge Function `ai-platform` que:
 6. consulte `/v1/jobs/:id` ou `/v1/jobs/status` a cada 2 segundos, com backoff até 10 segundos;
 7. pare o polling em completed ou failed;
 8. nunca repita automaticamente um POST que já retornou jobId.
+9. aceite picos de 20-30 pedidos sem bloquear a UI: cada POST deve ser feito uma unica vez e o jobId salvo;
+10. mostre posicao, jobs a frente e ETA usando response.queue e atualize pelo GET /v1/jobs/:id;
+11. use GET /v1/jobs/stats para exibir queued, concurrency e estimatedDrainMs;
+12. trate estimatedWaitMs como estimativa, nunca como SLA, pois prioridade e retries podem alterar a ordem.
 
 Texto:
 POST /v1/text
@@ -41,7 +45,7 @@ Body: { "prompt": string, "task": "general" | "quality", "cache": true }
 Imagem:
 POST /v1/image
 Body: { "prompt": string, "negativePrompt": string opcional, "provider": "auto", "model": "auto", "wait": false }
-Resposta esperada: { "success": true, "jobId": string, "status": "waiting" }
+Resposta esperada: { "success": true, "jobId": string, "status": "waiting", "queue": { "position": number, "jobsAhead": number, "concurrency": 1, "estimatedWaitMs": number, "estimatedFinishAt": ISODate, "approximate": true } }
 
 Para população de catálogo gere uma imagem por produto. Se usar `POST /v1/image-gallery`, envie explicitamente `"count": 1`; não use uma imagem transparente 1x1 como placeholder. Quando não houver foto de origem, use `POST /v1/image` somente com prompt.
 
