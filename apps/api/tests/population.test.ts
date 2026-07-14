@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { populationSummary, queuePopulationSummary } from '../src/services/population.service';
+import { populationSummary, queueEntryPopulation, queuePopulationSummary } from '../src/services/population.service';
 
 describe('population status', () => {
   it('reports active populations with progress and deduplication', () => {
@@ -28,6 +28,11 @@ describe('population status', () => {
         { id: '2', status: 'failed' },
       ]).populationStatus,
     ).toBe('completed_with_errors');
+  });
+
+  it('does not claim that a deduplicated completed job is still populating', () => {
+    expect(queueEntryPopulation({ state: 'completed' }).populationStatus).toBe('completed');
+    expect(queueEntryPopulation({ state: 'active' }).populationStatus).toBe('populating');
   });
 
   it('aggregates queues into a single operational state and ETA', () => {

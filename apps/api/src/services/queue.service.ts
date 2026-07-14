@@ -249,5 +249,10 @@ export async function enqueueWithTiming(
   name: QueueName, payload: Record<string, unknown>, opts: EnqueueOptions = {},
 ): Promise<{ jobId: string; queue: QueueTiming }> {
   const jobId = await enqueue(name, payload, opts);
-  return { jobId, queue: await queueTiming(name, jobId) };
+  const queue = await queueTiming(name, jobId);
+  if (queue.state === 'unknown') {
+    const record = await prisma.job.findUnique({ where: { id: jobId }, select: { status: true } });
+    if (record?.status) queue.state = record.status;
+  }
+  return { jobId, queue };
 }

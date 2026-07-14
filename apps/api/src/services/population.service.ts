@@ -75,3 +75,22 @@ export function queuePopulationSummary(queues: QueuePopulationState[]) {
     estimatedFinishAt: queued > 0 ? new Date(Date.now() + estimatedDrainMs).toISOString() : null,
   };
 }
+
+export function queueEntryPopulation(queue: { state: string }) {
+  if (queue.state === 'completed') {
+    return {
+      populationStatus: 'completed',
+      message: 'Demanda ja concluida; resultado reutilizado por cache ou deduplicacao.',
+    };
+  }
+  if (queue.state === 'failed') {
+    return { populationStatus: 'failed', message: 'Demanda encerrada com falha.' };
+  }
+  if (['waiting', 'active', 'delayed', 'prioritized'].includes(queue.state)) {
+    return {
+      populationStatus: 'populating',
+      message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+    };
+  }
+  return { populationStatus: 'accepted', message: 'Demanda aceita e organizada pelo sistema.' };
+}

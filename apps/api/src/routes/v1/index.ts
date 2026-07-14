@@ -28,7 +28,7 @@ import { enqueue, enqueueAndWait, enqueueWithTiming, QueueName, queueStats, queu
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { persistImageResponse } from '../../services/image-storage.service';
-import { populationSummary, queuePopulationSummary } from '../../services/population.service';
+import { populationSummary, queueEntryPopulation, queuePopulationSummary } from '../../services/population.service';
 
 let activeSynchronousText = 0;
 function acquireSynchronousTextSlot(): (() => void) | undefined {
@@ -98,7 +98,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       });
       return reply.code(202).send({
         success: true, ...queued, status: 'waiting', execution: 'async',
-        populationStatus: 'populating', message: 'Sistema esta populando; a demanda foi organizada na fila de texto.',
+        ...queueEntryPopulation(queued.queue),
       });
     }
     try {
@@ -120,8 +120,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     if (!body.wait) {
       const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
       return reply.code(202).send({
-        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
-        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+        success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
     }
     const response = await execute('image', body, (p) => p.generateImage(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -139,8 +138,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       // HTTP proxiada por mais de 100s.
       const queued = await enqueueWithTiming('image', { ...body, image: body.image, denoise: body.strength }, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
       return reply.code(202).send({
-        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
-        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+        success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
     }
     const response = await execute('image', body, (p) => (p as unknown as ImageProvider).imageToImage(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -155,8 +153,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'gallery' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return reply.code(202).send({
-        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
-        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+        success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
   });
 
@@ -168,8 +165,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'multiangle' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return reply.code(202).send({
-        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
-        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+        success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
   });
 
@@ -178,8 +174,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'video-to-image' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return reply.code(202).send({
-        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
-        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+        success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
   });
 
@@ -188,8 +183,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'video-to-image' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return reply.code(202).send({
-        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
-        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+        success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
   });
   app.post('/remove-background', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req) => {
@@ -222,8 +216,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     if (!body.wait) {
       const queued = await enqueueWithTiming('image', { ...body, __kind: 'upscale' }, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
       return reply.code(202).send({
-        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
-        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+        success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
     }
     const response = await execute('upscale', body, (p) => p.upscale(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -252,8 +245,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     if (!body.wait) {
       const queued = await enqueueWithTiming('ocr', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
       return reply.code(202).send({
-        success: true, ...queued, status: 'waiting', populationStatus: 'populating',
-        message: 'Sistema esta populando; demanda organizada na fila sem bloquear a aplicacao.',
+        success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
     }
     const { result } = await enqueueAndWait('ocr', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -270,8 +262,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       callback: body.callback,
     });
     return reply.code(202).send({
-      success: true, ...queued, status: 'waiting', populationStatus: 'populating',
-      message: 'Sistema esta populando; job organizado na fila ' + body.type + '.',
+      success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
     });
   });
 
