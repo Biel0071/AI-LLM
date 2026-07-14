@@ -4,6 +4,7 @@ export * from './hash';
 export * from './response';
 export * from './image-provider';
 export * from './model-router';
+export * from './circuit-breaker';
 export * from './providers/base.provider';
 export * from './providers/openai-compatible.provider';
 export * from './providers/ollama.provider';

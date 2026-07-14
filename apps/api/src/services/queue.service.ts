@@ -67,27 +67,46 @@ export async function enqueue(
     ? cacheKey('job', name, `${opts.tenantId ?? 'global'}:${opts.projectId ?? 'all'}`, payload)
     : undefined;
 
+  const data = {
+    tenantId: opts.tenantId,
+    projectId: opts.projectId,
+    queue: name,
+    type: name,
+    status: 'waiting',
+    priority: opts.priority ?? 5,
+    dedupKey,
+    payload: payload as object,
+  };
+
+  let record: { id: string };
   if (dedupKey) {
+    // Caminho rapido para cache hit: evita abrir uma transacao quando o job
+    // ja existe. O advisory lock abaixo continua fechando a corrida no miss.
     const existing = await prisma.job.findFirst({
       where: { dedupKey, status: { in: ['waiting', 'active', 'completed'] } },
       orderBy: { createdAt: 'desc' },
       select: { id: true },
     });
     if (existing) return existing.id;
-  }
 
-  const record = await prisma.job.create({
-    data: {
-      tenantId: opts.tenantId,
-      projectId: opts.projectId,
-      queue: name,
-      type: name,
-      status: 'waiting',
-      priority: opts.priority ?? 5,
-      dedupKey,
-      payload: payload as object,
-    },
-  });
+    const claimed = await prisma.$transaction(async (tx) => {
+      // Serializa somente requests com o mesmo hash. Isso fecha a janela em
+      // que um lote concorrente criava varios jobs iguais antes do primeiro
+      // INSERT ficar visivel, desperdicando provider/tokens.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${dedupKey}))`;
+      const existing = await tx.job.findFirst({
+        where: { dedupKey, status: { in: ['waiting', 'active', 'completed'] } },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (existing) return { record: existing, created: false };
+      return { record: await tx.job.create({ data, select: { id: true } }), created: true };
+    });
+    if (!claimed.created) return claimed.record.id;
+    record = claimed.record;
+  } else {
+    record = await prisma.job.create({ data, select: { id: true } });
+  }
   try {
     await getQueue(name).add(
       name,

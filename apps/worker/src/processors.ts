@@ -12,6 +12,7 @@ import {
   parseImageInput,
   pickModel,
   ProviderRegistry,
+  ProviderCircuitBreaker,
   StandardResponse,
   TaskHint,
 } from '@ai-platform/shared';
@@ -67,6 +68,10 @@ async function run<T>(
 const fallbackOrder = (process.env.FREE_PROVIDER_ORDER ??
   'ollama,groq,gemini,cloudflare,openrouter,lmstudio')
   .split(',').map((name) => name.trim()).filter(Boolean);
+const providerCircuit = new ProviderCircuitBreaker(
+  Math.max(1, Number(process.env.PROVIDER_FAILURE_THRESHOLD ?? 2)),
+  Math.max(1_000, Number(process.env.PROVIDER_COOLDOWN_MS ?? 30_000)),
+);
 
 /**
  * `task` e uma pista opcional para o roteamento automatico de modelo
@@ -83,12 +88,19 @@ async function runWithFallback<T>(
   task?: TaskHint,
 ): Promise<StandardResponse<T>> {
   let lastError: unknown;
-  for (const provider of registry.resolveCandidates(capability, requested, fallbackOrder)) {
+  const candidates = registry.resolveCandidates(capability, requested, fallbackOrder);
+  const ready = candidates.filter((provider) => !providerCircuit.isOpen(`${provider.name}:${capability}`));
+  const runnable = ready.length ? ready : candidates.slice(0, 1);
+  for (const provider of runnable) {
+    const circuitKey = `${provider.name}:${capability}`;
     try {
       const routedModel = pickModel(capability, task, provider.name, process.env);
-      return await run(provider, () => fn(provider, routedModel));
+      const result = await run(provider, () => fn(provider, routedModel));
+      providerCircuit.recordSuccess(circuitKey);
+      return result;
     } catch (err) {
       lastError = err;
+      providerCircuit.recordFailure(circuitKey);
     }
   }
   throw lastError ?? new Error(`No provider available for ${capability}`);

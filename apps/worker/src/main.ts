@@ -27,28 +27,58 @@ const heartbeatFile = process.env.WORKER_HEARTBEAT_FILE ?? '/tmp/aiplatform-work
 const globalConcurrency = Math.max(1, Number(process.env.GLOBAL_WORKER_CONCURRENCY ?? maxConcurrency));
 let registryLoadedAt = 0;
 
-class JobSemaphore {
-  private active = 0;
-  private readonly waiting: Array<() => void> = [];
+interface SchedulerWaiter { exclusive: boolean; resolve: (release: () => void) => void }
 
-  constructor(private readonly limit: number) {}
+/**
+ * Jobs de imagem sao exclusivos: aguardam textos em andamento terminarem e
+ * impedem o Ollama de recarregar enquanto o ComfyUI usa RAM/CPU. Jobs leves
+ * compartilham o limite global, que pode ser reduzido em runtime.
+ */
+class AdaptiveJobScheduler {
+  private activeShared = 0;
+  private exclusiveActive = false;
+  private readonly waiting: SchedulerWaiter[] = [];
 
-  async acquire(): Promise<() => void> {
-    if (this.active >= this.limit) {
-      await new Promise<void>((resolve) => this.waiting.push(resolve));
+  constructor(private limit: number) {}
+
+  setLimit(limit: number): void {
+    this.limit = Math.max(1, limit);
+    this.drain();
+  }
+
+  acquire(exclusive: boolean): Promise<() => void> {
+    return new Promise((resolve) => {
+      this.waiting.push({ exclusive, resolve });
+      this.drain();
+    });
+  }
+
+  private drain(): void {
+    if (this.exclusiveActive) return;
+    const exclusiveIndex = this.waiting.findIndex((waiter) => waiter.exclusive);
+    if (exclusiveIndex >= 0) {
+      if (this.activeShared > 0) return;
+      const [waiter] = this.waiting.splice(exclusiveIndex, 1);
+      this.exclusiveActive = true;
+      waiter.resolve(this.releaseOnce(() => { this.exclusiveActive = false; this.drain(); }));
+      return;
     }
-    this.active++;
+    while (this.activeShared < this.limit) {
+      const index = this.waiting.findIndex((waiter) => !waiter.exclusive);
+      if (index < 0) return;
+      const [waiter] = this.waiting.splice(index, 1);
+      this.activeShared++;
+      waiter.resolve(this.releaseOnce(() => { this.activeShared--; this.drain(); }));
+    }
+  }
+
+  private releaseOnce(release: () => void): () => void {
     let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      this.active--;
-      this.waiting.shift()?.();
-    };
+    return () => { if (!released) { released = true; release(); } };
   }
 }
 
-const jobSemaphore = new JobSemaphore(globalConcurrency);
+const jobScheduler = new AdaptiveJobScheduler(globalConcurrency);
 let registryRefresh: Promise<typeof registry> | undefined;
 
 async function loadRegistryFromDatabase() {
@@ -161,7 +191,7 @@ for (const name of queueNames) {
     name,
     async (job) => {
       const jobId = (job.data as any).__jobId as string | undefined;
-      const releaseSlot = await jobSemaphore.acquire();
+      const releaseSlot = await jobScheduler.acquire(name === 'image');
       logger.info({ queue: name, jobId }, 'job started');
       await markJob(jobId, { status: 'active', startedAt: new Date() });
       const start = Date.now();
@@ -184,7 +214,7 @@ for (const name of queueNames) {
         const message = err instanceof Error ? err.message : String(err);
         const maxAttempts = Number(job.opts.attempts ?? 1);
         // Entrada invalida e deterministica nao melhora com retry.
-        const permanentFailure = /Invalid argument returned 22|invalid image|unsupported image/i.test(message);
+        const permanentFailure = /Invalid argument returned 22|invalid image|unsupported|validation|unauthori[sz]ed|forbidden|authentication|api[ -]?key|model.*not found|(?:http|status)\s*(?:400|401|403|404)/i.test(message);
         if (permanentFailure) job.discard();
         const willRetry = !permanentFailure && job.attemptsMade + 1 < maxAttempts;
         await markJob(jobId, {
@@ -226,14 +256,27 @@ for (const name of queueNames) {
 // Imagem continua serial, respeitando a capacidade real de uma unica GPU.
 function tuneConcurrency(): void {
   if (process.env.ADAPTIVE_CONCURRENCY === 'false') return;
-  const freeRatio = os.freemem() / Math.max(1, os.totalmem());
-  const target = freeRatio < 0.12 ? 1 : freeRatio < 0.25 ? Math.max(1, Math.ceil(maxConcurrency / 2)) : maxConcurrency;
+  const processMemory = process as NodeJS.Process & {
+    availableMemory?: () => number;
+    constrainedMemory?: () => number;
+  };
+  const available = processMemory.availableMemory?.() ?? os.freemem();
+  const constrained = processMemory.constrainedMemory?.();
+  const total = constrained && constrained > 0 ? constrained : os.totalmem();
+  const freeRatio = available / Math.max(1, total);
+  const cpuRatio = os.loadavg()[0] / Math.max(1, os.availableParallelism());
+  const memoryTarget = freeRatio < 0.12 ? 1 : freeRatio < 0.25 ? Math.max(1, Math.ceil(maxConcurrency / 2)) : maxConcurrency;
+  const cpuTarget = cpuRatio > 1.1 ? 1 : cpuRatio > 0.8 ? Math.max(1, Math.ceil(maxConcurrency / 2)) : maxConcurrency;
+  const target = Math.min(memoryTarget, cpuTarget);
   if (target === effectiveConcurrency) return;
   effectiveConcurrency = target;
+  jobScheduler.setLimit(Math.min(globalConcurrency, target));
   for (const [name, worker] of workersByQueue) {
     if (name !== 'image') worker.concurrency = target;
   }
-  logger.warn({ freeRatio: Number(freeRatio.toFixed(3)), concurrency: target }, 'worker concurrency adjusted to available memory');
+  logger.warn({
+    freeRatio: Number(freeRatio.toFixed(3)), cpuRatio: Number(cpuRatio.toFixed(3)), concurrency: target,
+  }, 'worker concurrency adjusted to available resources');
 }
 const resourceTimer = setInterval(tuneConcurrency, 15_000);
 tuneConcurrency();

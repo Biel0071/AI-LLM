@@ -6,6 +6,7 @@ import {
   pickModel,
   ProviderRegistry,
   ProviderError,
+  ProviderCircuitBreaker,
   ProviderResult,
   StandardResponse,
   TaskHint,
@@ -35,6 +36,10 @@ const fallbackOrder = (process.env.FREE_PROVIDER_ORDER ??
   .split(',')
   .map((name) => name.trim())
   .filter(Boolean);
+const providerCircuit = new ProviderCircuitBreaker(
+  Math.max(1, Number(process.env.PROVIDER_FAILURE_THRESHOLD ?? 2)),
+  Math.max(1_000, Number(process.env.PROVIDER_COOLDOWN_MS ?? 30_000)),
+);
 
 /** Pipeline central: cache por provider -> chamada -> fallback -> uso. */
 export async function execute<T>(
@@ -112,6 +117,9 @@ export async function execute<T>(
   const { provider: _provider, cache: _cache, wait: _wait, fallback: _fallback, ...cacheInput } = effectiveRequest;
   let lastError: unknown;
 
+  const readyCandidates = candidates.filter((provider) => !providerCircuit.isOpen(`${provider.name}:${capability}`));
+  const forceProbe = readyCandidates.length === 0;
+
   for (const [candidateIndex, provider] of candidates.entries()) {
     request.model = candidateIndex === 0 ? effectiveRequest.model : clientModel;
     const requestedModel = request.model ?? 'provider-default';
@@ -143,10 +151,17 @@ export async function execute<T>(
       }
     }
 
+    const circuitKey = `${provider.name}:${capability}`;
+    if ((forceProbe && candidateIndex > 0) || (!forceProbe && providerCircuit.isOpen(circuitKey))) {
+      logger.debug({ capability, provider: provider.name }, 'provider skipped while circuit is open');
+      continue;
+    }
+
     const start = Date.now();
     try {
       const res = await call(provider);
       const durationMs = Date.now() - start;
+      providerCircuit.recordSuccess(circuitKey);
       const response = ok({
         provider: provider.name,
         model: res.model,
@@ -179,6 +194,7 @@ export async function execute<T>(
       return response;
     } catch (err) {
       lastError = err;
+      const circuit = providerCircuit.recordFailure(circuitKey);
       const durationMs = Date.now() - start;
       metrics.requests.inc({ capability, provider: provider.name, cached: 'false', status: 'error' });
       usageService.record({
@@ -191,7 +207,7 @@ export async function execute<T>(
         errorCode: err instanceof Error ? err.name : 'UNKNOWN',
         durationMs,
       });
-      logger.warn({ capability, provider: provider.name, err }, 'provider failed; trying fallback');
+      logger.warn({ capability, provider: provider.name, circuitOpenUntil: circuit.openUntil || undefined, err }, 'provider failed; trying fallback');
     }
   }
 
