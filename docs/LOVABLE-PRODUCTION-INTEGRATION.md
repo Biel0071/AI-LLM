@@ -66,7 +66,7 @@ Body:
   }))
 }
 
-Divida lotes acima de 1000 itens. Salve jobIds no banco vinculados ao registro de origem. Crie uma tela de progresso usando `/v1/jobs/status`, com contadores waiting, active, completed e failed. Permita retentar somente jobs failed e preserve os IDs concluídos. Para imagens, mostre o arquivo retornado em `result.images[].url` quando completed.
+Envie no maximo 10000 itens por lote. Salve jobIds no banco vinculados ao registro de origem. Crie uma tela de progresso usando `/v1/jobs/status`, com contadores waiting, active, completed e failed. Permita retentar somente jobs failed e preserve os IDs concluídos. Para imagens, mostre o arquivo retornado em `result.images[].url` quando completed.
 ```
 
 ## Teste rápido server-side

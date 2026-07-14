@@ -26,8 +26,8 @@ services:
     # corromper filas e deixar jobs presos. A retencao de jobs e cache e
     # limitada pela aplicacao; ao atingir o teto, o Redis falha de forma
     # explicita e recuperavel, sem apagar locks/estados da fila.
-    command: redis-server --appendonly yes --maxmemory ${REDIS_MAXMEMORY:-256mb} --maxmemory-policy noeviction
-    mem_limit: 320m
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy noeviction
+    mem_limit: 640m
     volumes:
       - redisdata:/data
     healthcheck:

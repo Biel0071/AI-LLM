@@ -244,28 +244,40 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // /v1/jobs individuais (e esbarrar no rate limit por chave), manda tudo
   // de uma vez aqui. A fila (BullMQ, concorrencia configurada via
   // WORKER_CONCURRENCY/IMAGE_WORKER_CONCURRENCY) absorve e processa no
-  // proprio ritmo sustentavel - aceitar 1000 jobs nao significa rodar
-  // 1000 ao mesmo tempo, so significa que 1000 ficam na fila esperando a
-  // vez, sem gerar 1000 conexoes/retries do lado do chamador.
+  // proprio ritmo sustentavel. A API aceita ate 10 mil, mas grava em blocos
+  // pequenos para nao abrir 10 mil operacoes simultaneas em Postgres/Redis.
   app.post('/jobs/batch', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
-    const body = z.object({ jobs: z.array(jobSchema).min(1).max(1000) }).parse(req.body);
-    const jobIds = await Promise.all(
-      body.jobs.map((j) =>
-        enqueue(j.type as QueueName, j.payload, {
-          tenantId: req.auth?.tenantId,
-          projectId: req.auth?.projectId,
-          priority: j.priority,
-        }),
-      ),
-    );
-    return reply.code(202).send({ success: true, jobIds, count: jobIds.length, queues: await queueStats() });
+    const body = z.object({ jobs: z.array(jobSchema).min(1).max(env.BATCH_MAX_JOBS) }).parse(req.body);
+    const jobIds: string[] = [];
+    const rejected: Array<{ index: number; error: string }> = [];
+    for (let offset = 0; offset < body.jobs.length; offset += env.BATCH_ENQUEUE_CONCURRENCY) {
+      const chunk = body.jobs.slice(offset, offset + env.BATCH_ENQUEUE_CONCURRENCY);
+      const results = await Promise.all(chunk.map(async (j, index) => {
+        try {
+          return { ok: true as const, jobId: await enqueue(j.type as QueueName, j.payload, {
+            tenantId: req.auth?.tenantId,
+            projectId: req.auth?.projectId,
+            priority: j.priority,
+          }) };
+        } catch (error) {
+          return { ok: false as const, index: offset + index, error: error instanceof Error ? error.message : String(error) };
+        }
+      }));
+      for (const result of results) {
+        if (result.ok) jobIds.push(result.jobId);
+        else rejected.push({ index: result.index, error: result.error });
+      }
+    }
+    return reply.code(rejected.length ? 207 : 202).send({
+      success: rejected.length === 0, jobIds, count: jobIds.length, rejected, queues: await queueStats(),
+    });
   });
 
   // ---------- Status de varios jobs numa unica chamada ----------
   // Evita ter que fazer 1 GET /jobs/:id por item pra desenhar progresso de
   // um lote grande - manda os ids que importam e recebe o status de todos.
   app.post('/jobs/status', { config: rlConfig, schema: { tags: ['v1'] } }, async (req) => {
-    const body = z.object({ ids: z.array(z.string().min(1)).min(1).max(1000) }).parse(req.body);
+    const body = z.object({ ids: z.array(z.string().min(1)).min(1).max(env.BATCH_MAX_JOBS) }).parse(req.body);
     const jobs = await prisma.job.findMany({
       where: {
         id: { in: body.ids },
