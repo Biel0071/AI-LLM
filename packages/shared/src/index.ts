@@ -17,3 +17,5 @@ export * from './providers/replicate.provider';
 export * from './providers/registry';
 export * from './quality';
 export * from './resource-controller';
+export * from './execution-memory';
+export * from './network-safety';

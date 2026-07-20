@@ -172,6 +172,27 @@ export const jobSchema = z.object({
   strictQuality: z.boolean().optional().default(true),
 });
 
+export const reverseConnectorSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  sourceUrl: z.string().url().max(2_048),
+  resultUrl: z.string().url().max(2_048),
+  secret: z.string().min(16).max(512),
+  projectId: z.string().min(1).optional(),
+  intervalSeconds: z.number().int().min(10).max(3_600).default(30),
+  batchSize: z.number().int().min(1).max(100).default(20),
+  enabled: z.boolean().default(true),
+});
+
+export const reverseSourceResponseSchema = z.object({
+  cursor: z.string().max(2_048).optional(),
+  hasMore: z.boolean().optional().default(false),
+  jobs: z.array(z.object({
+    sourceJobId: z.string().min(1).max(256),
+    type: jobSchema.shape.type,
+    payload: z.record(z.unknown()),
+    priority: z.number().int().min(1).max(10).optional(),
+  })).max(100).default([]),
+});
 export const seoSchema = z.object({
   product: z.string().min(1),
   description: z.string().optional(),

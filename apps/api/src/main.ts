@@ -6,6 +6,7 @@ import { prisma } from './lib/prisma';
 import { redis } from './lib/redis';
 import { reloadRegistry } from './services/ai.service';
 import { closeQueues } from './services/queue.service';
+import { startReversePoller, stopReversePoller } from './services/reverse-poller.service';
 
 async function main(): Promise<void> {
   await bootstrap();
@@ -14,6 +15,7 @@ async function main(): Promise<void> {
 
   const close = async (signal: string) => {
     logger.info({ signal }, 'shutting down');
+    stopReversePoller();
     await app.close();
     await closeQueues();
     await prisma.$disconnect();
@@ -24,6 +26,7 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => void close('SIGTERM'));
 
   await app.listen({ port: env.PORT, host: env.HOST });
+  startReversePoller();
   logger.info(`AI Platform API rodando em http://${env.HOST}:${env.PORT} (docs em /docs)`);
 }
 

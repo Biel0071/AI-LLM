@@ -8,7 +8,10 @@ import pino from 'pino';
 import { PrismaClient } from '@prisma/client';
 import {
   AdaptiveJobScheduler,
+  chooseExecutionMemory,
   createRegistryFromEnv,
+  executionMemoryContext,
+  executionMemoryHash,
   decideConcurrency,
   deterministicTextQuality,
   QualityGateError,
@@ -147,6 +150,76 @@ async function markJob(
     .catch(() => undefined);
 }
 
+
+function memoryScope(data: Record<string, any>): string {
+  return `${data.__tenantId ?? 'global'}:${data.__projectId ?? 'all'}`;
+}
+
+async function applyExecutionMemory(queue: string, data: Record<string, any>) {
+  if (queue === 'webhook' || data.provider || data.model) return undefined;
+  try {
+    const contextHash = executionMemoryHash(queue, data);
+    const candidates = await prisma.executionMemory.findMany({
+      where: { scopeKey: memoryScope(data), queue, contextHash },
+      select: {
+        provider: true, model: true, successCount: true, failureCount: true,
+        approvedCount: true, rejectedCount: true, qualityTotal: true, durationTotalMs: true,
+      },
+    });
+    const choice = chooseExecutionMemory(candidates);
+    if (choice) {
+      data.provider = choice.provider;
+      data.model = choice.model;
+      data.__memoryRoute = choice;
+    }
+    return choice;
+  } catch (error) {
+    logger.warn({ queue, error }, 'execution memory lookup failed');
+    return undefined;
+  }
+}
+
+async function learnExecutionSuccess(
+  queue: string,
+  data: Record<string, any>,
+  provider: string,
+  model: string,
+  quality: number,
+  durationMs: number,
+): Promise<void> {
+  if (queue === 'webhook') return;
+  const scopeKey = memoryScope(data);
+  const contextHash = executionMemoryHash(queue, data);
+  const context = executionMemoryContext(queue, data);
+  await prisma.executionMemory.upsert({
+    where: { scopeKey_queue_contextHash_provider_model: { scopeKey, queue, contextHash, provider, model } },
+    create: {
+      scopeKey, tenantId: data.__tenantId, projectId: data.__projectId, queue, contextHash,
+      context: context as object, provider, model, successCount: 1, qualityTotal: quality,
+      durationTotalMs: BigInt(durationMs), lastUsedAt: new Date(),
+    },
+    update: {
+      successCount: { increment: 1 }, qualityTotal: { increment: quality },
+      durationTotalMs: { increment: BigInt(durationMs) }, lastUsedAt: new Date(),
+    },
+  }).catch((error) => logger.warn({ queue, error }, 'execution memory learning failed'));
+}
+
+async function learnExecutionFailure(queue: string, data: Record<string, any>): Promise<void> {
+  const route = data.__memoryRoute as { provider?: string; model?: string } | undefined;
+  if (!route?.provider || !route.model) return;
+  const scopeKey = memoryScope(data);
+  const contextHash = executionMemoryHash(queue, data);
+  const context = executionMemoryContext(queue, data);
+  await prisma.executionMemory.upsert({
+    where: { scopeKey_queue_contextHash_provider_model: { scopeKey, queue, contextHash, provider: route.provider, model: route.model } },
+    create: {
+      scopeKey, tenantId: data.__tenantId, projectId: data.__projectId, queue, contextHash,
+      context: context as object, provider: route.provider, model: route.model, failureCount: 1,
+    },
+    update: { failureCount: { increment: 1 }, lastUsedAt: new Date() },
+  }).catch((error) => logger.warn({ queue, error }, 'execution memory failure learning failed'));
+}
 function clampQuality(value: unknown): number {
   const score = Number(value);
   return Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0;
@@ -244,6 +317,7 @@ for (const name of queueNames) {
       await markJob(jobId, { status: 'active', startedAt: new Date() });
       const start = Date.now();
       try {
+        const memoryChoice = await applyExecutionMemory(name, job.data as Record<string, any>);
         const activeRegistry = await getRegistry();
         const result = await processors[name](job, activeRegistry);
         const quality = await assessJobQuality(name, job.data as Record<string, any>, result);
@@ -255,6 +329,7 @@ for (const name of queueNames) {
         await persistGeneratedImages(jobId, job.data, result);
         const durationMs = Date.now() - start;
         const finishedAt = new Date();
+        Object.assign(result, { memory: { learned: true, routeReused: Boolean(memoryChoice), ...(memoryChoice ?? {}) } });
         await markJob(jobId, {
           status: 'completed',
           error: null,
@@ -264,8 +339,10 @@ for (const name of queueNames) {
           durationMs,
           finishedAt,
         });
+        await learnExecutionSuccess(name, job.data as Record<string, any>, result.provider, result.model, quality?.score ?? 100, durationMs);
         await enqueueReverseCallback(jobId, (job.data as any).__callback, 'job.completed', {
           event: 'job.completed', jobId, queue: name, status: 'completed', result,
+          origin: (job.data as any).__reverse,
           provider: result.provider, model: result.model, durationMs, finishedAt: finishedAt.toISOString(),
         });
         logger.info({ queue: name, jobId, ms: durationMs }, 'job completed');
@@ -287,9 +364,10 @@ for (const name of queueNames) {
           finishedAt,
         });
         if (!willRetry) {
+          await learnExecutionFailure(name, job.data as Record<string, any>);
           await enqueueReverseCallback(jobId, (job.data as any).__callback, 'job.failed', {
             event: 'job.failed', jobId, queue: name, status: 'failed', error: message.slice(0, 2000),
-            durationMs, finishedAt: finishedAt?.toISOString(),
+            origin: (job.data as any).__reverse, durationMs, finishedAt: finishedAt?.toISOString(),
           });
         }
         logger[willRetry ? 'warn' : 'error'](

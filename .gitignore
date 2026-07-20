@@ -19,3 +19,4 @@ logs/
 cloudflared-tunnel.log*
 tunnel-url.txt
 .claude/
+graphify-out/

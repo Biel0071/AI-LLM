@@ -19,6 +19,7 @@ import { metrics } from '../metrics';
 import { logger } from '../lib/logger';
 import { prisma } from '../lib/prisma';
 import { buildProviderEnv } from './provider-config.service';
+import { recallExecutionRoute, rememberExecutionSuccess } from './execution-memory.service';
 
 export let registry: ProviderRegistry = createRegistryFromEnv(process.env);
 
@@ -124,6 +125,12 @@ export async function execute<T>(
 
   // Roteamento automatico de modelo: so preenche quando o chamador (ou o
   // default do tenant, acima) nao forcou um `model` explicito.
+  const memoryChoice = !effectiveRequest.provider && !effectiveRequest.model
+    ? await recallExecutionRoute(capability, effectiveRequest, ctx.tenantId, ctx.projectId)
+    : undefined;
+  if (memoryChoice) {
+    effectiveRequest = { ...effectiveRequest, provider: memoryChoice.provider, model: memoryChoice.model };
+  }
   if (!effectiveRequest.model) {
     let primaryProviderName: string | undefined;
     try {
@@ -236,6 +243,11 @@ export async function execute<T>(
         durationMs,
         tokens: res.tokens,
       });
+      Object.assign(response, { memory: { learned: true, routeReused: Boolean(memoryChoice), ...(memoryChoice ?? {}) } });
+      void rememberExecutionSuccess(
+        capability, effectiveRequest, { provider: provider.name, model: res.model },
+        response.quality?.score ?? 100, durationMs, ctx.tenantId, ctx.projectId,
+      );
 
       if (useCache) {
         const promptText = typeof request.prompt === 'string'

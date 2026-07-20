@@ -10,10 +10,10 @@ datasource db {
 // ---------- Multi-tenant ----------
 
 model Tenant {
-  id           String    @id @default(cuid())
-  name         String
-  slug         String    @unique
-  active       Boolean   @default(true)
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  active               Boolean  @default(true)
   // Configuracao por loja/tenant
   defaultTextProvider  String?
   defaultImageProvider String?
@@ -21,18 +21,18 @@ model Tenant {
   monthlyTokenLimit    BigInt?
   monthlyRequestLimit  Int?
   rateLimitPerMinute   Int?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  users     User[]
-  apiKeys   ApiKey[]
-  projects  Project[]
-  jobs      Job[]
-  logs      RequestLog[]
-  usage     Usage[]
-  images    Image[]
-  prompts   Prompt[]
-  credits   Credit[]
+  users    User[]
+  apiKeys  ApiKey[]
+  projects Project[]
+  jobs     Job[]
+  logs     RequestLog[]
+  usage    Usage[]
+  images   Image[]
+  prompts  Prompt[]
+  credits  Credit[]
 }
 
 model Project {
@@ -64,7 +64,7 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  tenant    Tenant?    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   auditLogs AuditLog[]
 }
 
@@ -103,14 +103,14 @@ model ProviderConfig {
 }
 
 model ModelConfig {
-  id               String  @id @default(cuid())
-  providerId       String
-  modelId          String
-  displayName      String?
-  capability       String  @default("text")
-  costPer1kInput   Float   @default(0)
-  costPer1kOutput  Float   @default(0)
-  enabled          Boolean @default(true)
+  id              String  @id @default(cuid())
+  providerId      String
+  modelId         String
+  displayName     String?
+  capability      String  @default("text")
+  costPer1kInput  Float   @default(0)
+  costPer1kOutput Float   @default(0)
+  enabled         Boolean @default(true)
 
   provider ProviderConfig @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
@@ -120,24 +120,24 @@ model ModelConfig {
 // ---------- Jobs / Filas ----------
 
 model Job {
-  id          String    @id @default(cuid())
-  tenantId    String?
-  projectId   String?
-  queue       String
-  type        String
-  status      String    @default("waiting") // waiting | active | completed | failed
-  priority    Int       @default(5)
-  dedupKey    String?
-  payload     Json
-  result      Json?
-  error       String?
-  attempts    Int       @default(0)
-  provider    String?
-  model       String?
-  durationMs  Int?
-  createdAt   DateTime  @default(now())
-  startedAt   DateTime?
-  finishedAt  DateTime?
+  id         String    @id @default(cuid())
+  tenantId   String?
+  projectId  String?
+  queue      String
+  type       String
+  status     String    @default("waiting") // waiting | active | completed | failed
+  priority   Int       @default(5)
+  dedupKey   String?
+  payload    Json
+  result     Json?
+  error      String?
+  attempts   Int       @default(0)
+  provider   String?
+  model      String?
+  durationMs Int?
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
 
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
@@ -150,20 +150,20 @@ model Job {
 // ---------- Logs / Uso / Custos ----------
 
 model RequestLog {
-  id           String   @id @default(cuid())
-  tenantId     String?
-  capability   String
-  provider     String
-  model        String
-  cached       Boolean  @default(false)
-  success      Boolean  @default(true)
-  errorCode    String?
-  durationMs   Int
-  promptTokens     Int @default(0)
-  completionTokens Int @default(0)
-  totalTokens      Int @default(0)
-  cost         Float    @default(0)
-  createdAt    DateTime @default(now())
+  id               String   @id @default(cuid())
+  tenantId         String?
+  capability       String
+  provider         String
+  model            String
+  cached           Boolean  @default(false)
+  success          Boolean  @default(true)
+  errorCode        String?
+  durationMs       Int
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  cost             Float    @default(0)
+  createdAt        DateTime @default(now())
 
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
@@ -172,15 +172,15 @@ model RequestLog {
 }
 
 model Usage {
-  id           String   @id @default(cuid())
-  tenantId     String
-  day          DateTime @db.Date
-  capability   String
-  provider     String
-  requests     Int      @default(0)
-  cachedHits   Int      @default(0)
-  totalTokens  BigInt   @default(0)
-  cost         Float    @default(0)
+  id          String   @id @default(cuid())
+  tenantId    String
+  day         DateTime @db.Date
+  capability  String
+  provider    String
+  requests    Int      @default(0)
+  cachedHits  Int      @default(0)
+  totalTokens BigInt   @default(0)
+  cost        Float    @default(0)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -203,19 +203,19 @@ model Credit {
 // ---------- Cache inteligente ----------
 
 model CacheEntry {
-  id         String   @id @default(cuid())
-  hash       String   @unique
-  capability String
-  provider   String
-  model      String
-  prompt     String
-  response   Json
-  promptTokens     Int @default(0)
-  completionTokens Int @default(0)
-  durationMs Int      @default(0)
-  hits       Int      @default(0)
-  createdAt  DateTime @default(now())
-  lastHitAt  DateTime @default(now())
+  id               String   @id @default(cuid())
+  hash             String   @unique
+  capability       String
+  provider         String
+  model            String
+  prompt           String
+  response         Json
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  durationMs       Int      @default(0)
+  hits             Int      @default(0)
+  createdAt        DateTime @default(now())
+  lastHitAt        DateTime @default(now())
 
   @@index([provider, model])
 }
@@ -272,6 +272,7 @@ model ImageWorkflow {
   @@unique([provider, name])
   @@index([provider, enabled])
 }
+
 // ---------- Workers / Auditoria ----------
 
 model WorkerNode {
@@ -297,4 +298,56 @@ model AuditLog {
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
+}
+
+// ---------- Memória operacional e população reversa ----------
+
+model ExecutionMemory {
+  id              String   @id @default(cuid())
+  scopeKey        String
+  tenantId        String?
+  projectId       String?
+  queue           String
+  contextHash     String
+  context         Json
+  provider        String
+  model           String
+  successCount    Int      @default(0)
+  failureCount    Int      @default(0)
+  approvedCount   Int      @default(0)
+  rejectedCount   Int      @default(0)
+  qualityTotal    Float    @default(0)
+  durationTotalMs BigInt   @default(0)
+  lastUsedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([scopeKey, queue, contextHash, provider, model])
+  @@index([scopeKey, queue, updatedAt])
+}
+
+model ReverseConnector {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  projectId           String?
+  name                String
+  sourceUrl           String
+  resultUrl           String
+  secretEncrypted     String
+  enabled             Boolean   @default(true)
+  intervalSeconds     Int       @default(30)
+  batchSize           Int       @default(20)
+  cursor              String?
+  nextPollAt          DateTime  @default(now())
+  lastPollAt          DateTime?
+  lastSuccessAt       DateTime?
+  lastError           String?
+  consecutiveFailures Int       @default(0)
+  receivedJobs        Int       @default(0)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([enabled, nextPollAt])
+  @@index([tenantId, projectId])
 }

@@ -38,6 +38,14 @@ const envSchema = z.object({
   SYNC_TEXT_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
   BATCH_MAX_JOBS: z.coerce.number().int().min(1).max(10_000).default(10_000),
   BATCH_ENQUEUE_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(25),
+  REVERSE_POLL_ENABLED: z.string().default('true').transform((value) => value !== 'false'),
+  REVERSE_POLL_TICK_MS: z.coerce.number().int().min(1_000).default(5_000),
+  REVERSE_POLL_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(2),
+  REVERSE_MAX_INFLIGHT: z.coerce.number().int().min(1).max(10_000).default(1_000),
+  REVERSE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(15_000),
+  REVERSE_MAX_RESPONSE_BYTES: z.coerce.number().int().min(1_024).max(10_000_000).default(2_000_000),
+  REVERSE_ALLOW_HTTP: z.string().default('false').transform((value) => value === 'true'),
+  REVERSE_REQUIRE_RESPONSE_SIGNATURE: z.string().default('false').transform((value) => value === 'true'),
   OCR_ENGINE: z.enum(['vision', 'tesseract']).default('vision'),
 });
 

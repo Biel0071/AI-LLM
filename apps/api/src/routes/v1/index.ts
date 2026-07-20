@@ -30,6 +30,8 @@ import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { persistImageResponse } from '../../services/image-storage.service';
 import { populationSummary, queueEntryPopulation, queuePopulationSummary } from '../../services/population.service';
+import { reverseRoutes } from './reverse';
+import { memoryRoutes } from './memory';
 
 function resolveJobQueue(type: string, payload: Record<string, unknown>): QueueName {
   if (type === 'text' && payload.task === 'vision') {
@@ -71,6 +73,9 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       type === 'ocr' ? 'ocr' : type === 'embedding' ? 'embed' : type === 'image' ? 'image' :
         type === 'vision' || payload?.task === 'vision' ? 'vision' : 'text';
     const hasScope = (scope: string) => req.auth?.scopes.includes('*') || req.auth?.scopes.includes(scope);
+    if ((routePath?.startsWith('/reverse/') || routePath === '/reverse/connectors' || routePath?.startsWith('/memory/')) && !hasScope('workflow')) {
+      return reply.code(403).send(fail('INSUFFICIENT_SCOPE', 'A API key nao possui o escopo workflow'));
+    }
     if (routePath === '/jobs' && req.method === 'POST') {
       const job = req.body as { type?: string; payload?: Record<string, unknown> } | undefined;
       const required = typeToScope(job?.type, job?.payload);
@@ -93,6 +98,9 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   const rlConfig = {
     rateLimit: { max: env.RATE_LIMIT_MAX, timeWindow: env.RATE_LIMIT_WINDOW_MS },
   };
+
+  await app.register(reverseRoutes);
+  await app.register(memoryRoutes);
 
   // ---------- Texto ----------
   app.post('/text', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
