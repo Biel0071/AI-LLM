@@ -153,7 +153,7 @@
         api('/admin/providers'), api('/admin/provider-configs'),
       ]);
       const configByName = Object.fromEntries(configs.map((c) => [c.name, c]));
-      const choices = ['ollama', 'groq', 'gemini', 'openrouter', 'huggingface', 'cloudflare', 'lmstudio', 'comfyui', 'forge', 'invokeai'];
+      const choices = ['ollama', 'kimi', 'groq', 'gemini', 'openrouter', 'huggingface', 'cloudflare', 'lmstudio', 'comfyui', 'forge', 'invokeai'];
       content().innerHTML = `
         <h1>Providers</h1>
         <p class="muted">Cadastre as credenciais aqui. Segredos sao criptografados e nunca retornam pela API.</p>

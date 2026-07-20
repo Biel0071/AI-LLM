@@ -15,3 +15,4 @@ export * from './providers/a1111.provider';
 export * from './providers/sdapi.provider';
 export * from './providers/replicate.provider';
 export * from './providers/registry';
+export * from './quality';

@@ -6,6 +6,7 @@ import { cacheKey } from '@ai-platform/shared';
 
 export const QUEUE_NAMES = [
   'text',
+  'vision',
   'image',
   'embedding',
   'ocr',

@@ -165,6 +165,25 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
     );
   }
 
+  // Moonshot/Kimi usa o contrato OpenAI. O modo sem thinking reduz a
+  // latencia para geracao e validacao em lote.
+  if (env.MOONSHOT_API_KEY) {
+    registry.register(
+      new OpenAICompatibleProvider({
+        name: 'kimi',
+        baseUrl: env.MOONSHOT_BASE_URL ?? 'https://api.moonshot.ai/v1',
+        apiKey: env.MOONSHOT_API_KEY,
+        defaultModel: env.MOONSHOT_DEFAULT_MODEL ?? 'kimi-k3',
+        capabilities: ['text', 'chat', 'vision'],
+        omitTemperature: true,
+        extraBodyForModel: (model) => model === 'kimi-k3'
+          ? { reasoning_effort: ['low', 'high', 'max'].includes(env.MOONSHOT_REASONING_EFFORT ?? '') ? env.MOONSHOT_REASONING_EFFORT : 'low' }
+          : model === 'kimi-k2.6'
+            ? { thinking: { type: 'disabled' } }
+            : {},
+      }),
+    );
+  }
   if (env.HUGGINGFACE_API_KEY) {
     registry.register(
       new OpenAICompatibleProvider({

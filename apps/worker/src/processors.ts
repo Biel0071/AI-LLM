@@ -112,8 +112,21 @@ async function runWithFallback<T>(
 // ---------- Worker Texto ----------
 export const textProcessor: ProcessorFn = async (job, registry) => {
   const data = job.data as { prompt: string; system?: string; provider?: string; model?: string; task?: TaskHint };
+  if (data.task === 'vision') {
+    throw new Error('validation: task vision requires images and queue type "vision"');
+  }
   return runWithFallback(registry, 'text', data.provider, (provider, routedModel) =>
     provider.generateText({ ...data, model: data.model ?? routedModel }), data.task ?? 'general',
+  );
+};
+
+export const visionProcessor: ProcessorFn = async (job, registry) => {
+  const data = job.data as { prompt: string; images: string[]; provider?: string; model?: string; maxTokens?: number };
+  if (!Array.isArray(data.images) || data.images.length === 0) {
+    throw new Error('validation: vision job requires at least one image');
+  }
+  return runWithFallback(registry, 'vision', data.provider, (provider, routedModel) =>
+    provider.vision({ prompt: data.prompt, images: data.images, model: data.model ?? routedModel, maxTokens: data.maxTokens }), 'vision',
   );
 };
 
@@ -419,6 +432,7 @@ export const webhookProcessor: ProcessorFn = async (job) => {
 
 export const processors: Record<string, ProcessorFn> = {
   text: textProcessor,
+  vision: visionProcessor,
   image: imageProcessor,
   embedding: embeddingProcessor,
   ocr: ocrProcessor,

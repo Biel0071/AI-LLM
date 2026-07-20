@@ -5,7 +5,14 @@ import { createDecipheriv, createHash } from 'node:crypto';
 import { Queue, Worker } from 'bullmq';
 import pino from 'pino';
 import { PrismaClient } from '@prisma/client';
-import { createRegistryFromEnv } from '@ai-platform/shared';
+import {
+  createRegistryFromEnv,
+  deterministicTextQuality,
+  ProviderRegistry,
+  QualityGateError,
+  QualityReport,
+  StandardResponse,
+} from '@ai-platform/shared';
 import { processors } from './processors';
 
 const logger = pino({
@@ -94,7 +101,9 @@ async function loadRegistryFromDatabase() {
       decipher.setAuthTag(Buffer.from(tag, 'base64'));
       secret = Buffer.concat([decipher.update(Buffer.from(data, 'base64')), decipher.final()]).toString('utf8');
     }
-    if (row.name === 'cloudflare') {
+    if (row.name === 'kimi') {
+      merged.MOONSHOT_API_KEY=secret; merged.MOONSHOT_BASE_URL=s.baseUrl; merged.MOONSHOT_DEFAULT_MODEL=s.defaultModel;
+    } else if (row.name === 'cloudflare') {
       merged.CLOUDFLARE_ACCOUNT_ID=s.accountId; merged.CLOUDFLARE_API_TOKEN=secret; merged.CLOUDFLARE_BASE_URL=s.baseUrl; merged.CLOUDFLARE_DEFAULT_MODEL=s.defaultModel;
     } else if (['ollama','lmstudio','comfyui','forge','invokeai'].includes(row.name)) {
       merged[`${prefixName}_BASE_URL`]=s.baseUrl; merged[`${prefixName}_DEFAULT_MODEL`]=s.defaultModel;
@@ -186,6 +195,97 @@ async function markJob(
     .catch(() => undefined);
 }
 
+function clampQuality(value: unknown): number {
+  const score = Number(value);
+  return Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0;
+}
+
+function parseJudgeReport(text: string, threshold: number): QualityReport | undefined {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return undefined;
+  try {
+    const parsed = JSON.parse(match[0]) as { score?: unknown; issues?: unknown };
+    const score = clampQuality(parsed.score);
+    const issues = Array.isArray(parsed.issues)
+      ? parsed.issues.filter((item): item is string => typeof item === 'string').slice(0, 10)
+      : [];
+    return { score, threshold, passed: score >= threshold, method: 'kimi-judge', issues };
+  } catch { return undefined; }
+}
+
+function resultAsText(result: unknown): string | undefined {
+  if (typeof result === 'string') return result;
+  if (!result || typeof result !== 'object') return undefined;
+  const value = result as Record<string, unknown>;
+  if (typeof value.text === 'string') return value.text;
+  if (value.message && typeof value.message === 'object' && typeof (value.message as Record<string, unknown>).content === 'string') {
+    return (value.message as Record<string, unknown>).content as string;
+  }
+  if (!Array.isArray(value.images)) return JSON.stringify(value);
+  return undefined;
+}
+
+async function assessJobQuality(
+  queue: string,
+  data: Record<string, any>,
+  response: StandardResponse,
+  activeRegistry: ProviderRegistry,
+): Promise<QualityReport | undefined> {
+  if (queue === 'webhook' || queue === 'embedding') return undefined;
+  const threshold = clampQuality(data.minQuality ?? process.env.MIN_OUTPUT_QUALITY ?? 90);
+  const text = resultAsText(response.result);
+  const generatedImages = (response.result as { images?: Array<{ base64?: string; url?: string }> } | undefined)?.images;
+  let report: QualityReport;
+
+  if (Array.isArray(generatedImages)) {
+    const valid = generatedImages.filter((image) => (image.base64?.length ?? 0) > 4_096 || Boolean(image.url));
+    const score = generatedImages.length > 0 && valid.length === generatedImages.length ? 100 : 30;
+    report = { score, threshold, passed: score >= threshold, method: 'deterministic', issues: score === 100 ? [] : ['missing_or_too_small_image'] };
+  } else if (text !== undefined) {
+    report = deterministicTextQuality(text, threshold, {
+      jsonExpected: data.json === true || queue === 'seo',
+      shortAnswer: data.json !== true && queue !== 'seo',
+    });
+  } else {
+    report = { score: 0, threshold, passed: false, method: 'deterministic', issues: ['unsupported_or_empty_output'] };
+  }
+
+  const judgeName = process.env.QUALITY_JUDGE_PROVIDER ?? 'kimi';
+  if (process.env.QUALITY_SEMANTIC_JUDGE === 'false' || !activeRegistry.has(judgeName)) return report;
+  try {
+    const judge = activeRegistry.get(judgeName);
+    const rubric = [
+      'Atue como auditor rigoroso. Avalie fidelidade ao pedido, correcao factual, completude, clareza e ausencia de placeholders.',
+      'Retorne SOMENTE JSON: {"score":0-100,"issues":["problema objetivo"]}.',
+      `Pedido original: ${String(data.prompt ?? data.product ?? data.text ?? '').slice(0, 8_000)}`,
+    ].join('\n');
+    let judgeText: string | undefined;
+    if (Array.isArray(generatedImages) && generatedImages[0]?.base64 && judge.capabilities.includes('vision')) {
+      const sourceImage = typeof data.image === 'string' && !/^https?:/i.test(data.image) && data.image.length > 4_096
+        ? (data.image.startsWith('data:') ? data.image : `data:image/png;base64,${data.image}`)
+        : undefined;
+      const judged = await judge.vision({
+        prompt: `${rubric}\n${sourceImage ? 'A primeira imagem e a referencia e a segunda e o resultado.' : 'A imagem enviada e o resultado.'} Penalize fortemente produto, cor, angulo ou texto divergentes.`,
+        images: [...(sourceImage ? [sourceImage] : []), `data:image/png;base64,${generatedImages[0].base64}`],
+        model: process.env.QUALITY_JUDGE_MODEL ?? process.env.MOONSHOT_VISION_MODEL ?? 'kimi-k2.6', maxTokens: 400,
+      });
+      judgeText = judged.result.text;
+    } else if (text !== undefined && judge.capabilities.includes('text')) {
+      const judged = await judge.generateText({ prompt: `${rubric}\nSaida candidata:\n${text.slice(0, 12_000)}`, model: process.env.QUALITY_JUDGE_MODEL ?? 'kimi-k2.6', maxTokens: 400, json: true });
+      judgeText = judged.result.text;
+    }
+    const semantic = judgeText ? parseJudgeReport(judgeText, threshold) : undefined;
+    if (semantic) {
+      semantic.score = Math.min(report.score, semantic.score);
+      semantic.passed = semantic.score >= threshold;
+      semantic.issues = Array.from(new Set([...report.issues, ...semantic.issues]));
+      return semantic;
+    }
+  } catch (error) {
+    logger.warn({ queue, judge: judgeName, err: error instanceof Error ? error.message : String(error) }, 'semantic quality judge unavailable');
+  }
+  return report;
+}
 async function persistGeneratedImages(jobId: string | undefined, jobData: any, response: any): Promise<void> {
   const images = response?.result?.images;
   if (!Array.isArray(images) || !images.length) return;
@@ -230,6 +330,12 @@ for (const name of queueNames) {
       try {
         const activeRegistry = await getRegistry();
         const result = await processors[name](job, activeRegistry);
+        const quality = await assessJobQuality(name, job.data as Record<string, any>, result, activeRegistry);
+        if (quality) {
+          result.quality = quality;
+          const strict = (job.data as any).strictQuality !== false && process.env.QUALITY_GATE_STRICT !== 'false';
+          if (strict && !quality.passed) throw new QualityGateError(quality);
+        }
         await persistGeneratedImages(jobId, job.data, result);
         const durationMs = Date.now() - start;
         const finishedAt = new Date();

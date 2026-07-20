@@ -19,6 +19,7 @@ import {
   ImageProvider,
   jobSchema,
   ocrSchema,
+  ProviderError,
   textSchema,
   upscaleSchema,
   visionSchema,
@@ -30,6 +31,15 @@ import { env } from '../../config/env';
 import { persistImageResponse } from '../../services/image-storage.service';
 import { populationSummary, queueEntryPopulation, queuePopulationSummary } from '../../services/population.service';
 
+function resolveJobQueue(type: string, payload: Record<string, unknown>): QueueName {
+  if (type === 'text' && payload.task === 'vision') {
+    if (!Array.isArray(payload.images) || payload.images.length === 0) {
+      throw new ProviderError('gateway', 'task vision requires payload.images; send type "vision" or POST /v1/vision', 'VISION_INPUT_REQUIRED', 400);
+    }
+    return 'vision';
+  }
+  return type as QueueName;
+}
 let activeSynchronousText = 0;
 function acquireSynchronousTextSlot(): (() => void) | undefined {
   if (activeSynchronousText >= env.SYNC_TEXT_CONCURRENCY) return undefined;
@@ -57,18 +67,19 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     }
     const routeUrl = req.routeOptions.url;
     const routePath = routeUrl?.replace(/^\/v1/, '');
-    const typeToScope = (type: string | undefined) =>
-      type === 'ocr' ? 'ocr' : type === 'embedding' ? 'embed' : type === 'image' ? 'image' : 'text';
+    const typeToScope = (type: string | undefined, payload?: Record<string, unknown>) =>
+      type === 'ocr' ? 'ocr' : type === 'embedding' ? 'embed' : type === 'image' ? 'image' :
+        type === 'vision' || payload?.task === 'vision' ? 'vision' : 'text';
     const hasScope = (scope: string) => req.auth?.scopes.includes('*') || req.auth?.scopes.includes(scope);
     if (routePath === '/jobs' && req.method === 'POST') {
-      const type = (req.body as { type?: string } | undefined)?.type;
-      const required = typeToScope(type);
+      const job = req.body as { type?: string; payload?: Record<string, unknown> } | undefined;
+      const required = typeToScope(job?.type, job?.payload);
       if (!hasScope(required)) return reply.code(403).send(fail('INSUFFICIENT_SCOPE', `A API key nao possui o escopo ${required}`));
       return;
     }
     if (routePath === '/jobs/batch' && req.method === 'POST') {
-      const jobs = (req.body as { jobs?: Array<{ type?: string }> } | undefined)?.jobs ?? [];
-      const requiredScopes = new Set(jobs.map((j) => typeToScope(j.type)));
+      const jobs = (req.body as { jobs?: Array<{ type?: string; payload?: Record<string, unknown> }> } | undefined)?.jobs ?? [];
+      const requiredScopes = new Set(jobs.map((j) => typeToScope(j.type, j.payload)));
       for (const required of requiredScopes) {
         if (!hasScope(required)) return reply.code(403).send(fail('INSUFFICIENT_SCOPE', `A API key nao possui o escopo ${required}`));
       }
@@ -255,7 +266,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // ---------- Jobs assincronos (SEO, traducao, classificacao...) ----------
   app.post('/jobs', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = jobSchema.parse(req.body);
-    const queued = await enqueueWithTiming(body.type as QueueName, body.payload, {
+    const queued = await enqueueWithTiming(resolveJobQueue(body.type, body.payload), { ...body.payload, minQuality: body.payload.minQuality ?? body.minQuality, strictQuality: body.payload.strictQuality ?? body.strictQuality }, {
       tenantId: req.auth?.tenantId,
       projectId: req.auth?.projectId,
       priority: body.priority,
@@ -307,7 +318,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       const chunk = body.jobs.slice(offset, offset + env.BATCH_ENQUEUE_CONCURRENCY);
       const results = await Promise.all(chunk.map(async (j, index) => {
         try {
-          return { ok: true as const, jobId: await enqueue(j.type as QueueName, j.payload, {
+          return { ok: true as const, jobId: await enqueue(resolveJobQueue(j.type, j.payload), { ...j.payload, minQuality: j.payload.minQuality ?? j.minQuality, strictQuality: j.payload.strictQuality ?? j.strictQuality }, {
             tenantId: req.auth?.tenantId,
             projectId: req.auth?.projectId,
             priority: j.priority,

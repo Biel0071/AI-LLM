@@ -119,6 +119,13 @@ export interface StandardResponse<T = unknown> {
   tokens: TokenUsage | Record<string, never>;
   cached: boolean;
   result: T;
+  quality?: {
+    score: number;
+    threshold: number;
+    passed: boolean;
+    method: 'deterministic' | 'kimi-judge';
+    issues: string[];
+  };
 }
 
 export interface StandardError {

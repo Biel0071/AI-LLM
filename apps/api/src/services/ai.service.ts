@@ -1,5 +1,6 @@
 import {
   AIProvider,
+  deterministicTextQuality,
   Capability,
   createRegistryFromEnv,
   ok,
@@ -8,6 +9,7 @@ import {
   ProviderError,
   ProviderCircuitBreaker,
   ProviderResult,
+  QualityGateError,
   StandardResponse,
   TaskHint,
 } from '@ai-platform/shared';
@@ -42,6 +44,32 @@ const providerCircuit = new ProviderCircuitBreaker(
   Math.max(1_000, Number(process.env.PROVIDER_COOLDOWN_MS ?? 30_000)),
 );
 
+function enforceSynchronousQuality<T>(
+  response: StandardResponse<T>,
+  capability: Capability,
+  request: Record<string, unknown>,
+): StandardResponse<T> {
+  if (capability === 'embed') return response;
+  const threshold = Math.max(0, Math.min(100, Number(request.minQuality ?? process.env.MIN_OUTPUT_QUALITY ?? 90)));
+  const result = response.result as any;
+  const text = typeof result === 'string' ? result
+    : typeof result?.text === 'string' ? result.text
+      : typeof result?.message?.content === 'string' ? result.message.content
+        : undefined;
+  let quality;
+  if (typeof text === 'string') {
+    quality = deterministicTextQuality(text, threshold, { jsonExpected: request.json === true, shortAnswer: request.json !== true });
+  } else if (Array.isArray(result?.images)) {
+    const valid = result.images.length > 0 && result.images.every((image: any) => (image?.base64?.length ?? 0) > 4_096 || Boolean(image?.url));
+    quality = { score: valid ? 100 : 30, threshold, passed: valid ? 100 >= threshold : 30 >= threshold, method: 'deterministic' as const, issues: valid ? [] : ['missing_or_too_small_image'] };
+  }
+  if (!quality) return response;
+  response.quality = quality;
+  if (request.strictQuality !== false && process.env.QUALITY_GATE_STRICT !== 'false' && !quality.passed) {
+    throw new QualityGateError(quality);
+  }
+  return response;
+}
 /** Pipeline central: cache por provider -> chamada -> fallback -> uso. */
 export async function execute<T>(
   capability: Capability,
@@ -141,14 +169,14 @@ export async function execute<T>(
           durationMs: 0,
           tokens: cached.tokens,
         });
-        return ok({
+        return enforceSynchronousQuality(ok({
           provider: cached.provider,
           model: cached.model,
           executionTime: 0,
           tokens: cached.tokens,
           cached: true,
           result: cached.result as T,
-        });
+        }), capability, effectiveRequest);
       }
     }
 
@@ -168,10 +196,10 @@ export async function execute<T>(
             tenantId: ctx.tenantId, capability, provider: provider.name, model: res.model,
             cached: true, success: true, durationMs: 0, tokens: res.tokens,
           });
-          return ok({
+          return enforceSynchronousQuality(ok({
             provider: provider.name, model: res.model, executionTime: 0,
             tokens: res.tokens, cached: true, result: res.result,
-          });
+          }), capability, effectiveRequest);
         } catch (err) {
           lastError = err;
           continue;
@@ -186,14 +214,14 @@ export async function execute<T>(
       const res = await providerCall;
       const durationMs = Date.now() - start;
       providerCircuit.recordSuccess(circuitKey);
-      const response = ok({
+      const response = enforceSynchronousQuality(ok({
         provider: provider.name,
         model: res.model,
         executionTime: durationMs,
         tokens: res.tokens,
         cached: false,
         result: res.result,
-      });
+      }), capability, effectiveRequest);
 
       metrics.requests.inc({ capability, provider: provider.name, cached: 'false', status: 'ok' });
       metrics.duration.observe({ capability, provider: provider.name }, durationMs / 1000);

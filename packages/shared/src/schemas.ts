@@ -24,6 +24,9 @@ const common = {
   fallback: z.boolean().optional().default(true),
   projectId: z.string().min(1).optional(),
   callback: callbackSchema.optional(),
+  /** Nota minima exigida antes de persistir/enviar o resultado. */
+  minQuality: z.number().int().min(0).max(100).optional().default(90),
+  strictQuality: z.boolean().optional().default(true),
 };
 
 export const textSchema = z.object({
@@ -159,11 +162,14 @@ export const ocrSchema = z.object({
 });
 
 export const jobSchema = z.object({
-  type: z.enum(['text', 'image', 'embedding', 'ocr', 'seo', 'translation', 'classification']),
+  type: z.enum(['text', 'vision', 'image', 'embedding', 'ocr', 'seo', 'translation', 'classification']),
   payload: z.record(z.unknown()),
   priority: z.number().int().min(1).max(10).optional(),
   projectId: z.string().min(1).optional(),
   callback: callbackSchema.optional(),
+  /** Nota minima exigida antes de persistir/enviar o resultado. */
+  minQuality: z.number().int().min(0).max(100).optional().default(90),
+  strictQuality: z.boolean().optional().default(true),
 });
 
 export const seoSchema = z.object({
