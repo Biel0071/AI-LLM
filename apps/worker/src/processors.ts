@@ -16,6 +16,7 @@ import {
   pickModel,
   ProviderRegistry,
   ProviderCircuitBreaker,
+  resolveAllowedCategory,
   StandardResponse,
   TaskHint,
 } from '@ai-platform/shared';
@@ -369,16 +370,17 @@ export const translationProcessor: ProcessorFn = async (job, registry) => {
 // ---------- Worker Classificacao ----------
 export const classificationProcessor: ProcessorFn = async (job, registry) => {
   const data = job.data as { text: string; categories: string[]; provider?: string; model?: string };
+  const task: TaskHint = job.attemptsMade > 0 ? 'quality' : 'classification';
   const prompt =
-    `Classifique o texto abaixo em UMA das categorias: ${data.categories.join(', ')}.\n` +
-    'Responda APENAS com o nome exato da categoria.\n\n' +
+    'Classifique o texto abaixo em exatamente UMA categoria permitida.\n' +
+    `Categorias permitidas (copie uma delas sem alterar): ${data.categories.map((category) => `[${category}]`).join(', ')}.\n` +
+    'Não use sinônimos, explicações, pontuação ou categorias diferentes. Responda APENAS com o texto exato dentro de um dos colchetes.\n\n' +
     data.text;
   const res = await runWithFallback(registry, 'text', data.provider, (provider, routedModel) =>
-    provider.generateText({ prompt, model: data.model ?? routedModel }), 'classification',
+    provider.generateText({ prompt, model: data.model ?? routedModel }), task,
   );
   const raw = (res.result as { text: string }).text.trim();
-  const category =
-    data.categories.find((c) => raw.toLowerCase().includes(c.toLowerCase())) ?? raw;
+  const category = resolveAllowedCategory(raw, data.categories);
   return { ...res, result: { category, raw } };
 };
 

@@ -13,6 +13,7 @@ import {
   QualityGateError,
   parseProcMeminfo,
   QualityReport,
+  resolveAllowedCategory,
   StandardResponse,
 } from '@ai-platform/shared';
 import { processors } from './processors';
@@ -223,7 +224,19 @@ async function assessJobQuality(
   const generatedImages = (response.result as { images?: Array<{ base64?: string; url?: string }> } | undefined)?.images;
   let report: QualityReport;
 
-  if (Array.isArray(generatedImages)) {
+  if (queue === 'classification') {
+    const classification = response.result as { category?: string; raw?: string } | undefined;
+    const category = classification?.category &&
+      resolveAllowedCategory(classification.category, Array.isArray(data.categories) ? data.categories : []);
+    const score = category ? 100 : 0;
+    report = {
+      score,
+      threshold,
+      passed: score >= threshold,
+      method: 'deterministic',
+      issues: category ? [] : ['classification_outside_allowed_categories'],
+    };
+  } else if (Array.isArray(generatedImages)) {
     const valid = generatedImages.filter((image) => (image.base64?.length ?? 0) > 4_096 || Boolean(image.url));
     const score = generatedImages.length > 0 && valid.length === generatedImages.length ? 100 : 30;
     report = { score, threshold, passed: score >= threshold, method: 'deterministic', issues: score === 100 ? [] : ['missing_or_too_small_image'] };

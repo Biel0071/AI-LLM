@@ -8,6 +8,30 @@ export interface QualityReport {
   issues: string[];
 }
 
+function normalizeLabel(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLocaleLowerCase('pt-BR')
+    .replace(/[^\p{Letter}\p{Number}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * Aceita somente uma categoria realmente presente na lista permitida.
+ * A comparação ignora acentos, caixa e pontuação, mas nunca tenta adivinhar
+ * sinônimos: uma resposta ambígua deve ser refeita, não gravada como correta.
+ */
+export function resolveAllowedCategory(raw: string, categories: string[]): string | undefined {
+  const normalizedRaw = normalizeLabel(
+    raw
+      .replace(/^```(?:text)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      .replace(/^["'`]+|["'`.]+$/g, ''),
+  );
+  return categories.find((category) => normalizeLabel(category) === normalizedRaw);
+}
+
 const PLACEHOLDER_PATTERNS = [
   /"\s*\.\.\.\s*"/,
   /\b(?:todo|tbd|lorem ipsum)\b/i,
