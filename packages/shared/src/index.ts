@@ -16,3 +16,4 @@ export * from './providers/sdapi.provider';
 export * from './providers/replicate.provider';
 export * from './providers/registry';
 export * from './quality';
+export * from './resource-controller';

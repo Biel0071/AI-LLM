@@ -123,7 +123,7 @@ export interface StandardResponse<T = unknown> {
     score: number;
     threshold: number;
     passed: boolean;
-    method: 'deterministic' | 'kimi-judge';
+    method: 'deterministic';
     issues: string[];
   };
 }

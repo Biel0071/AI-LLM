@@ -1,5 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createDecipheriv, createHash } from 'node:crypto';
 import { Queue, Worker } from 'bullmq';
@@ -7,9 +8,10 @@ import pino from 'pino';
 import { PrismaClient } from '@prisma/client';
 import {
   createRegistryFromEnv,
+  decideConcurrency,
   deterministicTextQuality,
-  ProviderRegistry,
   QualityGateError,
+  parseProcMeminfo,
   QualityReport,
   StandardResponse,
 } from '@ai-platform/shared';
@@ -101,9 +103,7 @@ async function loadRegistryFromDatabase() {
       decipher.setAuthTag(Buffer.from(tag, 'base64'));
       secret = Buffer.concat([decipher.update(Buffer.from(data, 'base64')), decipher.final()]).toString('utf8');
     }
-    if (row.name === 'kimi') {
-      merged.MOONSHOT_API_KEY=secret; merged.MOONSHOT_BASE_URL=s.baseUrl; merged.MOONSHOT_DEFAULT_MODEL=s.defaultModel;
-    } else if (row.name === 'cloudflare') {
+    if (row.name === 'cloudflare') {
       merged.CLOUDFLARE_ACCOUNT_ID=s.accountId; merged.CLOUDFLARE_API_TOKEN=secret; merged.CLOUDFLARE_BASE_URL=s.baseUrl; merged.CLOUDFLARE_DEFAULT_MODEL=s.defaultModel;
     } else if (['ollama','lmstudio','comfyui','forge','invokeai'].includes(row.name)) {
       merged[`${prefixName}_BASE_URL`]=s.baseUrl; merged[`${prefixName}_DEFAULT_MODEL`]=s.defaultModel;
@@ -200,19 +200,6 @@ function clampQuality(value: unknown): number {
   return Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0;
 }
 
-function parseJudgeReport(text: string, threshold: number): QualityReport | undefined {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return undefined;
-  try {
-    const parsed = JSON.parse(match[0]) as { score?: unknown; issues?: unknown };
-    const score = clampQuality(parsed.score);
-    const issues = Array.isArray(parsed.issues)
-      ? parsed.issues.filter((item): item is string => typeof item === 'string').slice(0, 10)
-      : [];
-    return { score, threshold, passed: score >= threshold, method: 'kimi-judge', issues };
-  } catch { return undefined; }
-}
-
 function resultAsText(result: unknown): string | undefined {
   if (typeof result === 'string') return result;
   if (!result || typeof result !== 'object') return undefined;
@@ -229,7 +216,6 @@ async function assessJobQuality(
   queue: string,
   data: Record<string, any>,
   response: StandardResponse,
-  activeRegistry: ProviderRegistry,
 ): Promise<QualityReport | undefined> {
   if (queue === 'webhook' || queue === 'embedding') return undefined;
   const threshold = clampQuality(data.minQuality ?? process.env.MIN_OUTPUT_QUALITY ?? 90);
@@ -250,40 +236,6 @@ async function assessJobQuality(
     report = { score: 0, threshold, passed: false, method: 'deterministic', issues: ['unsupported_or_empty_output'] };
   }
 
-  const judgeName = process.env.QUALITY_JUDGE_PROVIDER ?? 'kimi';
-  if (process.env.QUALITY_SEMANTIC_JUDGE === 'false' || !activeRegistry.has(judgeName)) return report;
-  try {
-    const judge = activeRegistry.get(judgeName);
-    const rubric = [
-      'Atue como auditor rigoroso. Avalie fidelidade ao pedido, correcao factual, completude, clareza e ausencia de placeholders.',
-      'Retorne SOMENTE JSON: {"score":0-100,"issues":["problema objetivo"]}.',
-      `Pedido original: ${String(data.prompt ?? data.product ?? data.text ?? '').slice(0, 8_000)}`,
-    ].join('\n');
-    let judgeText: string | undefined;
-    if (Array.isArray(generatedImages) && generatedImages[0]?.base64 && judge.capabilities.includes('vision')) {
-      const sourceImage = typeof data.image === 'string' && !/^https?:/i.test(data.image) && data.image.length > 4_096
-        ? (data.image.startsWith('data:') ? data.image : `data:image/png;base64,${data.image}`)
-        : undefined;
-      const judged = await judge.vision({
-        prompt: `${rubric}\n${sourceImage ? 'A primeira imagem e a referencia e a segunda e o resultado.' : 'A imagem enviada e o resultado.'} Penalize fortemente produto, cor, angulo ou texto divergentes.`,
-        images: [...(sourceImage ? [sourceImage] : []), `data:image/png;base64,${generatedImages[0].base64}`],
-        model: process.env.QUALITY_JUDGE_MODEL ?? process.env.MOONSHOT_VISION_MODEL ?? 'kimi-k2.6', maxTokens: 400,
-      });
-      judgeText = judged.result.text;
-    } else if (text !== undefined && judge.capabilities.includes('text')) {
-      const judged = await judge.generateText({ prompt: `${rubric}\nSaida candidata:\n${text.slice(0, 12_000)}`, model: process.env.QUALITY_JUDGE_MODEL ?? 'kimi-k2.6', maxTokens: 400, json: true });
-      judgeText = judged.result.text;
-    }
-    const semantic = judgeText ? parseJudgeReport(judgeText, threshold) : undefined;
-    if (semantic) {
-      semantic.score = Math.min(report.score, semantic.score);
-      semantic.passed = semantic.score >= threshold;
-      semantic.issues = Array.from(new Set([...report.issues, ...semantic.issues]));
-      return semantic;
-    }
-  } catch (error) {
-    logger.warn({ queue, judge: judgeName, err: error instanceof Error ? error.message : String(error) }, 'semantic quality judge unavailable');
-  }
   return report;
 }
 async function persistGeneratedImages(jobId: string | undefined, jobData: any, response: any): Promise<void> {
@@ -330,7 +282,7 @@ for (const name of queueNames) {
       try {
         const activeRegistry = await getRegistry();
         const result = await processors[name](job, activeRegistry);
-        const quality = await assessJobQuality(name, job.data as Record<string, any>, result, activeRegistry);
+        const quality = await assessJobQuality(name, job.data as Record<string, any>, result);
         if (quality) {
           result.quality = quality;
           const strict = (job.data as any).strictQuality !== false && process.env.QUALITY_GATE_STRICT !== 'false';
@@ -404,33 +356,52 @@ for (const name of queueNames) {
   workersByQueue.set(name, worker);
 }
 
-// Ajusta apenas filas leves (texto/SEO/OCR/etc.) conforme a memoria livre.
-// Imagem continua serial, respeitando a capacidade real de uma unica GPU.
+// Controlador adaptativo sem LLM: usa a memoria REAL do host em /proc,
+// inclusive swap. Leituras de cgroup/process.availableMemory representam so o
+// limite de 768MB do container e mascaravam a pressao da VPS.
+let healthyRecoverySamples = 0;
+const recoverySamplesRequired = Math.max(1, Number(process.env.RESOURCE_RECOVERY_SAMPLES ?? 3));
+
 function tuneConcurrency(): void {
   if (process.env.ADAPTIVE_CONCURRENCY === 'false') return;
-  const processMemory = process as NodeJS.Process & {
-    availableMemory?: () => number;
-    constrainedMemory?: () => number;
+  let memory = {
+    memoryAvailableBytes: os.freemem(), memoryTotalBytes: os.totalmem(),
+    swapFreeBytes: 0, swapTotalBytes: 0,
   };
-  const available = processMemory.availableMemory?.() ?? os.freemem();
-  const constrained = processMemory.constrainedMemory?.();
-  const total = constrained && constrained > 0 ? constrained : os.totalmem();
-  const freeRatio = available / Math.max(1, total);
-  const cpuRatio = os.loadavg()[0] / Math.max(1, os.availableParallelism());
-  const memoryTarget = freeRatio < 0.12 ? 1 : freeRatio < 0.25 ? Math.max(1, Math.ceil(maxConcurrency / 2)) : maxConcurrency;
-  const cpuTarget = cpuRatio > 1.1 ? 1 : cpuRatio > 0.8 ? Math.max(1, Math.ceil(maxConcurrency / 2)) : maxConcurrency;
-  const target = Math.min(memoryTarget, cpuTarget);
+  try {
+    const host = parseProcMeminfo(readFileSync('/proc/meminfo', 'utf8'));
+    if (host) memory = host;
+  } catch {
+    // Windows/desenvolvimento: usa os valores do sistema operacional.
+  }
+  const cpuLoadRatio = os.loadavg()[0] / Math.max(1, os.availableParallelism());
+  const decision = decideConcurrency({ ...memory, cpuLoadRatio }, Math.min(maxConcurrency, globalConcurrency));
+  let target = decision.concurrency;
+
+  // Reduz imediatamente; para aumentar exige leituras saudaveis consecutivas.
+  if (target > effectiveConcurrency) {
+    healthyRecoverySamples++;
+    if (healthyRecoverySamples < recoverySamplesRequired) target = effectiveConcurrency;
+  } else {
+    healthyRecoverySamples = 0;
+  }
   if (target === effectiveConcurrency) return;
+
   effectiveConcurrency = target;
-  jobScheduler.setLimit(Math.min(globalConcurrency, target));
-  for (const [name, worker] of workersByQueue) {
-    if (name !== 'image') worker.concurrency = target;
+  jobScheduler.setLimit(target);
+  for (const [queueName, worker] of workersByQueue) {
+    if (queueName !== 'image') worker.concurrency = target;
   }
   logger.warn({
-    freeRatio: Number(freeRatio.toFixed(3)), cpuRatio: Number(cpuRatio.toFixed(3)), concurrency: target,
-  }, 'worker concurrency adjusted to available resources');
+    pressure: decision.pressure,
+    reasons: decision.reasons,
+    memoryAvailableRatio: Number(decision.memoryAvailableRatio.toFixed(3)),
+    swapUsedRatio: Number(decision.swapUsedRatio.toFixed(3)),
+    cpuLoadRatio: Number(decision.cpuLoadRatio.toFixed(3)),
+    concurrency: target,
+  }, 'worker concurrency adjusted to host resources');
 }
-const resourceTimer = setInterval(tuneConcurrency, 15_000);
+const resourceTimer = setInterval(tuneConcurrency, Math.max(5_000, Number(process.env.RESOURCE_CHECK_INTERVAL_MS ?? 15_000)));
 tuneConcurrency();
 
 // ---------- Heartbeat ----------

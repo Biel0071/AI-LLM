@@ -62,11 +62,7 @@ export async function buildProviderEnv(): Promise<Record<string, string | undefi
     const s = (row.settings ?? {}) as StoredSettings;
     const secret = decrypt(s.apiKeyEncrypted);
     const prefix = row.name.toUpperCase();
-    if (row.name === 'kimi') {
-      result.MOONSHOT_API_KEY = secret;
-      result.MOONSHOT_BASE_URL = s.baseUrl;
-      result.MOONSHOT_DEFAULT_MODEL = s.defaultModel;
-    } else if (row.name === 'cloudflare') {
+    if (row.name === 'cloudflare') {
       result.CLOUDFLARE_ACCOUNT_ID = s.accountId;
       result.CLOUDFLARE_API_TOKEN = secret;
       result.CLOUDFLARE_BASE_URL = s.baseUrl;

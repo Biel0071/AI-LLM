@@ -23,12 +23,6 @@ export interface OpenAICompatibleConfig {
   imageModel?: string;
   capabilities?: Capability[];
   extraHeaders?: Record<string, string>;
-  /** Campos adicionais exigidos por APIs OpenAI-compatible (ex.: thinking do Kimi). */
-  extraBody?: Record<string, unknown>;
-  /** Alguns providers rejeitam qualquer temperatura diferente da fixa. */
-  fixedTemperature?: number;
-  omitTemperature?: boolean;
-  extraBodyForModel?: (model: string) => Record<string, unknown>;
 }
 
 /**
@@ -97,13 +91,8 @@ export class OpenAICompatibleProvider extends BaseProvider {
       };
     });
 
-    const body: Record<string, unknown> = {
-      model, messages, ...(this.config.extraBody ?? {}), ...(this.config.extraBodyForModel?.(model) ?? {}),
-    };
-    if (!this.config.omitTemperature) {
-      if (this.config.fixedTemperature !== undefined) body.temperature = this.config.fixedTemperature;
-      else if (input.temperature !== undefined) body.temperature = input.temperature;
-    }
+    const body: Record<string, unknown> = { model, messages };
+    if (input.temperature !== undefined) body.temperature = input.temperature;
     if (input.maxTokens !== undefined) body.max_tokens = input.maxTokens;
 
     const data = await this.http<any>(this.url('/chat/completions'), {

@@ -31,7 +31,7 @@ export function getQueue(name: QueueName): Queue {
       prefix: env.QUEUE_PREFIX,
       defaultJobOptions: {
         attempts: 3,
-        backoff: { type: 'exponential', delay: 3000 },
+        backoff: { type: 'exponential', delay: name === 'image' ? 30_000 : name === 'vision' || name === 'ocr' ? 15_000 : 5_000 },
         removeOnComplete: { age: 3600, count: 1000 },
         // Mantem uma dead letter util sem deixar falhas crescerem para sempre
         // dentro do Redis. O historico duravel continua no Postgres.
@@ -152,10 +152,11 @@ export async function queueStats(): Promise<
     concurrency: number; averageJobMs: number; queued: number; estimatedDrainMs: number }>
 > {
   return Promise.all(QUEUE_NAMES.map(async (name) => {
-    const [counts, averageJobMs] = await Promise.all([
-      getQueue(name).getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'prioritized'), averageJobDuration(name),
+    const [counts, averageJobMs, concurrency] = await Promise.all([
+      getQueue(name).getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'prioritized'),
+      averageJobDuration(name),
+      runtimeConcurrencyFor(name),
     ]);
-    const concurrency = concurrencyFor(name);
     const queued = (counts.waiting ?? 0) + (counts.active ?? 0) + (counts.delayed ?? 0) + (counts.prioritized ?? 0);
     return {
       name,
@@ -200,6 +201,19 @@ function concurrencyFor(name: QueueName): number {
   return Math.max(1, Number(configured) || 1);
 }
 
+async function runtimeConcurrencyFor(name: QueueName): Promise<number> {
+  if (name === 'image') return concurrencyFor(name);
+  const aliveSince = new Date(Date.now() - 120_000);
+  const nodes = await prisma.workerNode.findMany({
+    where: { lastHeartbeat: { gte: aliveSince } },
+    select: { queues: true, concurrency: true },
+  }).catch(() => []);
+  const live = nodes
+    .filter((node) => node.queues.split(',').includes(name))
+    .reduce((total, node) => total + Math.max(1, node.concurrency), 0);
+  return live || concurrencyFor(name);
+}
+
 function fallbackDurationFor(name: QueueName): number {
   if (name === 'webhook') return 1_000;
   if (name === 'image') return 35_000;
@@ -223,11 +237,13 @@ async function averageJobDuration(name: QueueName): Promise<number> {
 /** Estimativa operacional; prioridade e retries podem alterar a ordem real. */
 export async function queueTiming(name: QueueName, jobId: string): Promise<QueueTiming> {
   const queue = getQueue(name);
-  const [counts, averageJobMs, bullJob] = await Promise.all([
-    queue.getJobCounts('waiting', 'active', 'delayed', 'prioritized'), averageJobDuration(name), queue.getJob(jobId),
+  const [counts, averageJobMs, bullJob, concurrency] = await Promise.all([
+    queue.getJobCounts('waiting', 'active', 'delayed', 'prioritized'),
+    averageJobDuration(name),
+    queue.getJob(jobId),
+    runtimeConcurrencyFor(name),
   ]);
   const state = bullJob ? await bullJob.getState() : 'unknown';
-  const concurrency = concurrencyFor(name);
   const active = counts.active ?? 0;
   const waiting = counts.waiting ?? 0;
   const delayed = counts.delayed ?? 0;
