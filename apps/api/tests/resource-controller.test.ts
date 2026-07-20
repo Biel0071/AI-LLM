@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideConcurrency, parseProcMeminfo } from '@ai-platform/shared';
+import { AdaptiveJobScheduler, decideConcurrency, parseProcMeminfo } from '@ai-platform/shared';
 
 describe('adaptive resource controller', () => {
   it('reads host memory and swap from procfs', () => {
@@ -26,5 +26,28 @@ describe('adaptive resource controller', () => {
       swapTotalBytes: 4_000, swapFreeBytes: 3_000, cpuLoadRatio: 0.2,
     }, 4);
     expect(decision).toMatchObject({ concurrency: 4, pressure: 'normal' });
+  });
+  it('preserves FIFO fairness around an exclusive image job', async () => {
+    const scheduler = new AdaptiveJobScheduler(2);
+    const events: string[] = [];
+    const releaseFirst = await scheduler.acquire(false);
+    const image = scheduler.acquire(true).then((release) => {
+      events.push('image');
+      return release;
+    });
+    const secondText = scheduler.acquire(false).then((release) => {
+      events.push('text');
+      return release;
+    });
+
+    await Promise.resolve();
+    expect(events).toEqual([]);
+    releaseFirst();
+    const releaseImage = await image;
+    expect(events).toEqual(['image']);
+    releaseImage();
+    const releaseText = await secondText;
+    expect(events).toEqual(['image', 'text']);
+    releaseText();
   });
 });

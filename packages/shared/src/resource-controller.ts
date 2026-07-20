@@ -65,3 +65,68 @@ export function decideConcurrency(snapshot: ResourceSnapshot, maximum: number): 
     cpuLoadRatio: snapshot.cpuLoadRatio, pressure: 'normal', reasons: [],
   };
 }
+interface SchedulerWaiter {
+  exclusive: boolean;
+  resolve: (release: () => void) => void;
+}
+
+/**
+ * Limita jobs leves em paralelo e serializa jobs pesados sem furar a fila.
+ * A ordem FIFO impede que uma sequência contínua de imagens deixe textos
+ * esperando indefinidamente, ou que textos novos ultrapassem uma imagem.
+ */
+export class AdaptiveJobScheduler {
+  private activeShared = 0;
+  private exclusiveActive = false;
+  private readonly waiting: SchedulerWaiter[] = [];
+
+  constructor(private limit: number) {}
+
+  setLimit(limit: number): void {
+    this.limit = Math.max(1, limit);
+    this.drain();
+  }
+
+  acquire(exclusive: boolean): Promise<() => void> {
+    return new Promise((resolve) => {
+      this.waiting.push({ exclusive, resolve });
+      this.drain();
+    });
+  }
+
+  private drain(): void {
+    if (this.exclusiveActive) return;
+    const first = this.waiting[0];
+    if (!first) return;
+
+    if (first.exclusive) {
+      if (this.activeShared > 0) return;
+      this.waiting.shift();
+      this.exclusiveActive = true;
+      first.resolve(this.releaseOnce(() => {
+        this.exclusiveActive = false;
+        this.drain();
+      }));
+      return;
+    }
+
+    while (this.activeShared < this.limit && this.waiting[0] && !this.waiting[0].exclusive) {
+      const waiter = this.waiting.shift()!;
+      this.activeShared++;
+      waiter.resolve(this.releaseOnce(() => {
+        this.activeShared--;
+        this.drain();
+      }));
+    }
+  }
+
+  private releaseOnce(release: () => void): () => void {
+    let released = false;
+    return () => {
+      if (!released) {
+        released = true;
+        release();
+      }
+    };
+  }
+}

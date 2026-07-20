@@ -26,8 +26,9 @@ export interface ModelRouteEnv {
   [key: string]: string | undefined;
 }
 
-/** Tarefas curtas/estruturadas onde um modelo pequeno e rapido basta. */
-const FAST_TASKS = new Set<TaskHint>(['classification', 'translation', 'seo']);
+/** Classificacao privilegia precisao; traducao e SEO usam o modelo rapido. */
+const QUALITY_TASKS = new Set<TaskHint>(['quality', 'classification']);
+const FAST_TASKS = new Set<TaskHint>(['translation', 'seo']);
 
 /**
  * Escolhe automaticamente o melhor modelo para a tarefa quando o chamador nao
@@ -53,7 +54,7 @@ export function pickModel(
   if (capability === 'embed' || task === 'embed') {
     return env.OLLAMA_EMBED_MODEL || env.OLLAMA_DEFAULT_MODEL;
   }
-  if (task === 'quality') {
+  if (task && QUALITY_TASKS.has(task)) {
     return env.OLLAMA_QUALITY_MODEL || env.OLLAMA_DEFAULT_MODEL;
   }
   if (task && FAST_TASKS.has(task)) {

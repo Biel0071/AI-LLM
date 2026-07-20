@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deterministicTextQuality, resolveAllowedCategory } from '@ai-platform/shared';
+import { deterministicTextQuality, pickModel, resolveAllowedCategory } from '@ai-platform/shared';
 
 describe('quality gate', () => {
   it('rejects unresolved placeholders even when JSON is syntactically valid', () => {
@@ -17,5 +17,11 @@ describe('quality gate', () => {
     const categories = ['moda', 'eletronicos'];
     expect(resolveAllowedCategory('Eletrônicos.', categories)).toBe('eletronicos');
     expect(resolveAllowedCategory('Eletrodomésticos', categories)).toBeUndefined();
+  });
+  it('routes classification to the more accurate local model', () => {
+    expect(pickModel('text', 'classification', 'ollama', {
+      OLLAMA_FAST_MODEL: 'qwen2.5:1.5b',
+      OLLAMA_QUALITY_MODEL: 'qwen2.5:3b',
+    })).toBe('qwen2.5:3b');
   });
 });

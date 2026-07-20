@@ -7,6 +7,7 @@ import { Queue, Worker } from 'bullmq';
 import pino from 'pino';
 import { PrismaClient } from '@prisma/client';
 import {
+  AdaptiveJobScheduler,
   createRegistryFromEnv,
   decideConcurrency,
   deterministicTextQuality,
@@ -37,56 +38,6 @@ const heartbeatFile = process.env.WORKER_HEARTBEAT_FILE ?? '/tmp/aiplatform-work
 const globalConcurrency = Math.max(1, Number(process.env.GLOBAL_WORKER_CONCURRENCY ?? maxConcurrency));
 let registryLoadedAt = 0;
 
-interface SchedulerWaiter { exclusive: boolean; resolve: (release: () => void) => void }
-
-/**
- * Jobs de imagem sao exclusivos: aguardam textos em andamento terminarem e
- * impedem o Ollama de recarregar enquanto o ComfyUI usa RAM/CPU. Jobs leves
- * compartilham o limite global, que pode ser reduzido em runtime.
- */
-class AdaptiveJobScheduler {
-  private activeShared = 0;
-  private exclusiveActive = false;
-  private readonly waiting: SchedulerWaiter[] = [];
-
-  constructor(private limit: number) {}
-
-  setLimit(limit: number): void {
-    this.limit = Math.max(1, limit);
-    this.drain();
-  }
-
-  acquire(exclusive: boolean): Promise<() => void> {
-    return new Promise((resolve) => {
-      this.waiting.push({ exclusive, resolve });
-      this.drain();
-    });
-  }
-
-  private drain(): void {
-    if (this.exclusiveActive) return;
-    const exclusiveIndex = this.waiting.findIndex((waiter) => waiter.exclusive);
-    if (exclusiveIndex >= 0) {
-      if (this.activeShared > 0) return;
-      const [waiter] = this.waiting.splice(exclusiveIndex, 1);
-      this.exclusiveActive = true;
-      waiter.resolve(this.releaseOnce(() => { this.exclusiveActive = false; this.drain(); }));
-      return;
-    }
-    while (this.activeShared < this.limit) {
-      const index = this.waiting.findIndex((waiter) => !waiter.exclusive);
-      if (index < 0) return;
-      const [waiter] = this.waiting.splice(index, 1);
-      this.activeShared++;
-      waiter.resolve(this.releaseOnce(() => { this.activeShared--; this.drain(); }));
-    }
-  }
-
-  private releaseOnce(release: () => void): () => void {
-    let released = false;
-    return () => { if (!released) { released = true; release(); } };
-  }
-}
 
 const jobScheduler = new AdaptiveJobScheduler(globalConcurrency);
 let registryRefresh: Promise<typeof registry> | undefined;
