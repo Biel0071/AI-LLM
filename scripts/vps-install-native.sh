@@ -19,11 +19,14 @@ set -euo pipefail
 log() { echo "[vps-install] $*"; }
 
 # ---------- Swap (rede de seguranca de memoria) ----------
+# Tamanho por tier: o deploy passa SWAP_SIZE_GB (lite=4, power=8). Default 4
+# se chamado diretamente sem o env.
+SWAP_SIZE_GB="${SWAP_SIZE_GB:-4}"
 if [ -f /swapfile ] || swapon --show | grep -q .; then
   log "swap ja existe, pulando"
 else
-  log "criando swap de 4G em /swapfile"
-  fallocate -l 4G /swapfile
+  log "criando swap de ${SWAP_SIZE_GB}G em /swapfile"
+  fallocate -l "${SWAP_SIZE_GB}G" /swapfile
   chmod 600 /swapfile
   mkswap /swapfile
   swapon /swapfile

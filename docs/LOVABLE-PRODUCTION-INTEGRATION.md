@@ -2,7 +2,10 @@
 
 ## Endpoints reais
 
-- API base atual: `http://209.50.241.22:3000`
+- API base: `http://SEU_IP:3000` — o `scripts/deploy-vps.sh` imprime a URL
+  real (com o IP público detectado da VPS) e a `AI_PLATFORM_API_KEY` ao final
+  do deploy, prontas para copiar. Em produção com domínio, use
+  `https://SEU_DOMINIO`.
 - Health público: `GET /v1/health`
 - Texto: `POST /v1/text`
 - Imagem assíncrona: `POST /v1/image`
@@ -19,7 +22,7 @@ A chave nunca deve ser colocada em `VITE_*`, no JavaScript do navegador ou commi
 Integre este projeto à AI Platform de produção usando uma Edge Function server-side.
 
 Secrets obrigatórios:
-AI_PLATFORM_BASE_URL=http://209.50.241.22:3000
+AI_PLATFORM_BASE_URL=http://SEU_IP:3000   (use a URL impressa pelo deploy)
 AI_PLATFORM_API_KEY=<colar a chave live fornecida separadamente>
 
 Nunca exponha AI_PLATFORM_API_KEY no frontend, localStorage, logs ou respostas HTTP.

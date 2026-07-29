@@ -4,7 +4,7 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: ${MEM_POSTGRES:-512m}
     environment:
       POSTGRES_USER: aiplatform
       POSTGRES_PASSWORD: aiplatform
@@ -27,7 +27,7 @@ services:
     # limitada pela aplicacao; ao atingir o teto, o Redis falha de forma
     # explicita e recuperavel, sem apagar locks/estados da fila.
     command: redis-server --appendonly yes --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy noeviction
-    mem_limit: 640m
+    mem_limit: ${MEM_REDIS:-640m}
     volumes:
       - redisdata:/data
     healthcheck:
@@ -43,7 +43,7 @@ services:
       context: .
       dockerfile: docker/api.Dockerfile
     restart: unless-stopped
-    mem_limit: 768m
+    mem_limit: ${MEM_API:-768m}
     env_file: .env
     environment:
       DATABASE_URL: postgresql://aiplatform:aiplatform@postgres:5432/aiplatform?schema=public
@@ -75,7 +75,7 @@ services:
       context: .
       dockerfile: docker/worker.Dockerfile
     restart: unless-stopped
-    mem_limit: 768m
+    mem_limit: ${MEM_WORKER:-768m}
     env_file: .env
     environment:
       DATABASE_URL: postgresql://aiplatform:aiplatform@postgres:5432/aiplatform?schema=public
@@ -153,10 +153,10 @@ services:
     image: ollama/ollama:latest
     profiles: [vps]
     restart: unless-stopped
-    mem_limit: 3g
+    mem_limit: ${MEM_OLLAMA:-3g}
     environment:
       OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
-      OLLAMA_MAX_LOADED_MODELS: 1
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
       OLLAMA_MAX_QUEUE: ${OLLAMA_MAX_QUEUE:-128}
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
     volumes:
@@ -178,8 +178,9 @@ services:
     restart: unless-stopped
     # SD1.5 em float32 (checkpoint + VAE + CLIP + buffers de inferencia)
     # passa de 2.5GB em CPU durante a geracao - com o limite mais baixo o
-    # container levava OOM-kill no meio da 1a geracao de imagem.
-    mem_limit: 4g
+    # container levava OOM-kill no meio da 1a geracao de imagem. Default 4g
+    # (tier lite); o deploy eleva via MEM_COMFYUI no tier power.
+    mem_limit: ${MEM_COMFYUI:-4g}
     volumes:
       # Reusa os arquivos ja baixados pelo instalador nativo antigo (evita
       # rebaixar ~2GB de checkpoint) - ajuste o caminho se mudar de VPS.

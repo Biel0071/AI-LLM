@@ -16,19 +16,96 @@
 #
 # Este script NAO para, reinicia ou reconfigura nenhum servico existente
 # na VPS - so instala software novo e sobe containers isolados.
+#
+# AUTO-ESCALA POR HARDWARE: detecta RAM/CPU da VPS e escolhe um "tier" de
+# tunagem (lite p/ VPS fraca ~6GB, power p/ VPS forte >=14GB). O tier define
+# apenas os TETOS (concorrencia, resolucao de imagem, limites de RAM dos
+# containers, swap); o worker continua ajustando a concorrencia real em
+# runtime pra baixo sob pressao (apps/worker tuneConcurrency le /proc/meminfo).
+# Assim o MESMO script roda na VPS atual e na nova sem manter duas versoes.
 # ====================================================
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo '== AI Platform - deploy VPS (multi-tenant, nao mexe em outros sistemas) =='
 
-# 0. Aviso de portas em uso (nao falha o script, so avisa)
+# -- Deteccao de hardware e escolha de tier --------------------------------
+# RAM total em MB e nucleos de CPU. Override manual: AI_PLATFORM_TIER=lite|power
+detect_ram_mb() { awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0; }
+detect_cpus() { nproc 2>/dev/null || echo 1; }
+RAM_MB=$(detect_ram_mb)
+CPUS=$(detect_cpus)
+TIER="${AI_PLATFORM_TIER:-}"
+if [ -z "$TIER" ]; then
+  # >=14GB de RAM E >=5 vCPU => power. Abaixo disso, lite (seguro na VPS fraca).
+  if [ "$RAM_MB" -ge 14000 ] && [ "$CPUS" -ge 5 ]; then TIER=power; else TIER=lite; fi
+fi
+echo "-- Hardware detectado: ${RAM_MB}MB RAM, ${CPUS} vCPU -> tier=${TIER} --"
+
+# Perfis de tunagem por tier. Cada variavel abaixo e consumida pelos set_env
+# e pelos mem_limits do docker-compose (exportadas no ambiente do compose).
+if [ "$TIER" = power ]; then
+  # VPS forte (ex: 6 vCPU / 16GB): Ollama + ComfyUI cabem residentes sem swap,
+  # entao subimos concorrencia, resolucao e limites de RAM dos containers.
+  TIER_WORKER_CONCURRENCY=4
+  TIER_GLOBAL_CONCURRENCY=4
+  TIER_SYNC_TEXT_CONCURRENCY=3
+  TIER_IMG_W=512
+  TIER_IMG_H=512
+  TIER_IMG_STEPS=4
+  TIER_GALLERY_MAX=3
+  TIER_OLLAMA_MAX_LOADED=2        # texto + visao residentes juntos
+  TIER_DEFAULT_MODEL=qwen2.5:3b
+  TIER_QUALITY_MODEL=qwen2.5:3b
+  TIER_SWAP_GB=8
+  # Tetos de RAM (mem_limit e teto, nao reserva). Soma ~16.5g de teto numa
+  # maquina de 16g de proposito: os picos de Ollama e ComfyUI nao coincidem
+  # (o AdaptiveJobScheduler serializa imagem), e o swap de 8g cobre o pico
+  # raro. Ollama e ComfyUI ficam em 6g cada - folga real sem estourar.
+  TIER_MEM_POSTGRES=1g
+  TIER_MEM_REDIS=768m
+  TIER_MEM_API=1536m
+  TIER_MEM_WORKER=1536m
+  TIER_MEM_OLLAMA=6g
+  TIER_MEM_COMFYUI=6g
+else
+  # VPS fraca (~6GB): serializa tudo (1 de cada vez) - valores identicos aos
+  # que ja estavam fixos aqui, calibrados em producao. Nada muda pra essa VPS.
+  TIER_WORKER_CONCURRENCY=1
+  TIER_GLOBAL_CONCURRENCY=1
+  TIER_SYNC_TEXT_CONCURRENCY=1
+  TIER_IMG_W=256
+  TIER_IMG_H=256
+  TIER_IMG_STEPS=3
+  TIER_GALLERY_MAX=1
+  TIER_OLLAMA_MAX_LOADED=1
+  TIER_DEFAULT_MODEL=qwen2.5:1.5b
+  TIER_QUALITY_MODEL=qwen2.5:3b
+  TIER_SWAP_GB=4
+  TIER_MEM_POSTGRES=512m
+  TIER_MEM_REDIS=640m
+  TIER_MEM_API=768m
+  TIER_MEM_WORKER=768m
+  TIER_MEM_OLLAMA=3g
+  TIER_MEM_COMFYUI=4g
+fi
+
+# 0. Portas do host - auto-deteccao. O plano ICP inclui painel, que pode ou
+# nao ocupar 5432/6379. Escolhe automaticamente uma porta livre pra
+# postgres/redis (offset padrao 5433/6380 como na VPS atual); se ate essas
+# estiverem ocupadas, sobe procurando a proxima livre. api(3000)/dashboard
+# (8080) ficam fixos - se um deles conflitar, e avisado pra decisao manual.
+port_in_use() { ss -ltn "( sport = :$1 )" 2>/dev/null | grep -q ":$1"; }
+first_free_port() { local p="$1"; while port_in_use "$p"; do p=$((p+1)); done; echo "$p"; }
 echo '-- Verificando portas ja em uso na VPS --'
-for p in 3000 8080 5433 6380; do
-  if ss -ltn "( sport = :$p )" 2>/dev/null | grep -q ":$p"; then
-    echo "  AVISO: porta $p ja esta em uso - pode ser este proprio deploy rodando de novo, ou conflito real. Confira antes de continuar."
+for p in 3000 8080; do
+  if port_in_use "$p"; then
+    echo "  AVISO: porta $p (fixa) ja em uso - pode ser este deploy rodando de novo, ou conflito real. Confira antes de continuar."
   fi
 done
+PG_PORT=$(first_free_port 5433)
+RD_PORT=$(first_free_port 6380)
+echo "  Postgres host -> ${PG_PORT} | Redis host -> ${RD_PORT}"
 
 # 1. Docker
 if ! command -v docker >/dev/null 2>&1; then
@@ -79,20 +156,16 @@ set_env COMFYUI_LCM_LORA lcm-lora-sdv1-5.safetensors
 # ja garante que so 1 imagem roda por vez na fila - nao precisa tambem
 # travar texto atras dela.
 set_env GPU_MAX_CONCURRENT 1
-# WORKER_CONCURRENCY=4 (default) deixa ate 4 jobs de texto/seo rodando ao
-# mesmo tempo. Testado em producao em 2 rodadas: mesmo com 2 (nao so 4),
-# 2 textos + 1 imagem concorrentes ainda saturam a RAM dessa VPS (5.8GB
-# total) o suficiente pra forcar swap em disco - passos de sampler que
-# levam ~12s isolados passaram de 200-300s sob essa concorrencia. Nao e
-# falta de nucleos de CPU, e falta de RAM pra manter Ollama + ComfyUI
-# ambos com seus modelos carregados SEM swap enquanto ainda rodam mais
-# de 1 geracao ao mesmo tempo. Ate um upgrade de RAM (32GB elimina isso
-# de vez), 1 serializa TUDO (texto e imagem, um de cada vez) - mais lento
-# por item mas garante que nenhum trava/aborta.
-set_env WORKER_CONCURRENCY 1
-# Limite compartilhado entre TODAS as filas. Sem ele, text/image/ocr/seo
-# tinham concorrencia 1 cada, mas ainda podiam rodar simultaneamente.
-set_env GLOBAL_WORKER_CONCURRENCY 1
+# WORKER_CONCURRENCY e o TETO de jobs leves (texto/seo) simultaneos; o worker
+# ajusta pra baixo em runtime sob pressao de RAM/CPU (tuneConcurrency le
+# /proc/meminfo). No tier lite (~6GB) fica 1: 2 textos + 1 imagem ja saturavam
+# a RAM e forcavam swap (passos de sampler de ~12s viravam 200-300s). No tier
+# power (>=14GB) sobe pra 4: Ollama + ComfyUI cabem residentes sem swap, entao
+# jobs leves rodam de verdade em paralelo. Definido por hardware acima.
+set_env WORKER_CONCURRENCY "$TIER_WORKER_CONCURRENCY"
+# Limite compartilhado entre TODAS as filas (semaforo global do scheduler).
+set_env GLOBAL_WORKER_CONCURRENCY "$TIER_GLOBAL_CONCURRENCY"
+set_env SYNC_TEXT_CONCURRENCY "$TIER_SYNC_TEXT_CONCURRENCY"
 set_env ADAPTIVE_CONCURRENCY true
 set_env PROVIDER_REGISTRY_TTL_MS 15000
 # Default de 90s foi calibrado pro tunel Cloudflare (que mata requests em
@@ -106,10 +179,10 @@ set_env OLLAMA_TIMEOUT_MS 180000
 # ficar ACIMA do OLLAMA_TIMEOUT_MS acima, senao o cliente desiste antes do
 # job ter chance de terminar dentro do proprio timeout do Ollama.
 set_env JOB_WAIT_TIMEOUT_MS 240000
-# Portas do host para postgres/redis - a 5432/6379 padrao ja esta em uso
-# nativamente por outro sistema nesta VPS (ver cabecalho do script).
-set_env POSTGRES_HOST_PORT 5433
-set_env REDIS_HOST_PORT 6380
+# Portas do host para postgres/redis - auto-detectadas no passo 0 (evitam
+# conflito com o painel/outro sistema da VPS).
+set_env POSTGRES_HOST_PORT "$PG_PORT"
+set_env REDIS_HOST_PORT "$RD_PORT"
 # Ollama/ComfyUI agora sao containers na mesma rede docker - alcancados
 # pelo nome do servico, sem depender de host.docker.internal/firewall.
 set_env OLLAMA_BASE_URL_DOCKER http://ollama:11434
@@ -121,29 +194,36 @@ set_env RATE_LIMIT_MAX 600
 # Fila "image" sempre roda 1 por vez (ComfyUI so processa 1 workflow por
 # vez fisicamente) - explicito aqui pra nao depender do default do codigo.
 set_env IMAGE_WORKER_CONCURRENCY 1
-# Um job por produto; cinco variacoes multiplicam a CPU por 5.
-set_env GALLERY_MAX_IMAGES_PER_JOB 1
+# Imagens de vitrine por job de galeria - lite=1 (CPU escassa), power=3.
+set_env GALLERY_MAX_IMAGES_PER_JOB "$TIER_GALLERY_MAX"
 # .env.example vem com OLLAMA_DEFAULT_MODEL=llama3 (generico, exemplo) -
 # essa VPS so tem qwen2.5:3b instalado. Sem isso, qualquer chamada de
 # texto SEM task explicito (chat geral, "gerar descricao" etc) cai no
 # roteamento "default" e falha com "model 'llama3' not found" upstream.
-set_env OLLAMA_DEFAULT_MODEL qwen2.5:1.5b
-set_env OLLAMA_FAST_MODEL qwen2.5:1.5b
-set_env OLLAMA_QUALITY_MODEL qwen2.5:3b
+# Modelo default de texto por tier: lite usa o 1.5b (mais leve/rapido na CPU
+# escassa); power usa o 3b (mais qualidade, cabe na RAM). FAST segue o default.
+set_env OLLAMA_DEFAULT_MODEL "$TIER_DEFAULT_MODEL"
+set_env OLLAMA_FAST_MODEL "$TIER_DEFAULT_MODEL"
+set_env OLLAMA_QUALITY_MODEL "$TIER_QUALITY_MODEL"
 set_env OLLAMA_NUM_PARALLEL 1
 set_env OLLAMA_KEEP_ALIVE 30m
 set_env OLLAMA_MAX_QUEUE 128
-set_env COMFYUI_DEFAULT_WIDTH 256
-set_env COMFYUI_DEFAULT_HEIGHT 256
-set_env COMFYUI_DEFAULT_STEPS 3
+# Quantos modelos o Ollama mantem residentes: lite=1 (troca sob demanda),
+# power=2 (texto + visao juntos, sem recarregar). Consumido pelo compose.
+export OLLAMA_MAX_LOADED_MODELS="$TIER_OLLAMA_MAX_LOADED"
+# Resolucao/passos de imagem por tier - lite 256x256/3, power 512x512/4.
+set_env COMFYUI_DEFAULT_WIDTH "$TIER_IMG_W"
+set_env COMFYUI_DEFAULT_HEIGHT "$TIER_IMG_H"
+set_env COMFYUI_DEFAULT_STEPS "$TIER_IMG_STEPS"
 # Checkpoint LCM mesclado instalado pelo provisionamento: 3 passos reais,
 # sem custo do node LoraLoader a cada requisicao.
 set_env COMFYUI_CHECKPOINT DreamShaper_8_LCM_merged.safetensors
 set_env COMFYUI_LCM_MODE true
 
-# 3. Modelos do ComfyUI + swap (unica coisa que ainda roda fora do Docker)
+# 3. Modelos do ComfyUI + swap (unica coisa que ainda roda fora do Docker).
+# SWAP_SIZE_GB por tier: lite=4G, power=8G. O script nativo respeita esse env.
 echo '-- Preparando swap e baixando modelos do ComfyUI --'
-bash scripts/vps-install-native.sh
+SWAP_SIZE_GB="$TIER_SWAP_GB" bash scripts/vps-install-native.sh
 
 # 3b. Se um Ollama/ComfyUI nativo de uma execucao anterior deste mesmo
 # script ainda estiver rodando (versao antiga, pre-containerizacao), para
@@ -158,7 +238,11 @@ done
 
 # 4. Stack Docker - perfil "vps" inclui os containers ollama/comfyui.
 # POSTGRES_HOST_PORT/REDIS_HOST_PORT no .env evitam conflito com as
-# portas 5432/6379 nativas de outros sistemas na VPS.
+# portas nativas de outros sistemas na VPS. Os limites de RAM dos containers
+# vem do tier detectado (exportados aqui pro docker-compose interpolar).
+export MEM_POSTGRES="$TIER_MEM_POSTGRES" MEM_REDIS="$TIER_MEM_REDIS"
+export MEM_API="$TIER_MEM_API" MEM_WORKER="$TIER_MEM_WORKER"
+export MEM_OLLAMA="$TIER_MEM_OLLAMA" MEM_COMFYUI="$TIER_MEM_COMFYUI"
 docker compose --profile vps up -d --build
 
 # 4b. Watchdog do host: Docker nao reinicia um container apenas por estar
@@ -192,9 +276,9 @@ systemctl daemon-reload
 systemctl enable --now ai-platform-watchdog.timer
 
 # 5. Baixa os modelos dentro do container ollama (a primeira vez que sobe,
-# o volume esta vazio). Os 3 juntos cabem em disco tranquilo (~4GB) - o
-# OLLAMA_MAX_LOADED_MODELS=1 garante que so 1 fica carregado em RAM por
-# vez, trocando conforme a capacidade chamada (texto/visao/embed).
+# o volume esta vazio). Os 4 juntos cabem em disco tranquilo (~4GB) - o
+# OLLAMA_MAX_LOADED_MODELS (1 no tier lite, 2 no power) controla quantos
+# ficam carregados em RAM ao mesmo tempo, trocando conforme a capacidade.
 echo '-- Baixando modelos dentro do container ollama (se ainda nao existirem) --'
 docker compose --profile vps exec -T ollama ollama pull qwen2.5:3b
 docker compose --profile vps exec -T ollama ollama pull qwen2.5:1.5b
@@ -207,14 +291,26 @@ docker compose --profile vps exec -T ollama ollama pull nomic-embed-text
 bash scripts/vps-merge-lcm-checkpoint.sh
 docker compose --profile vps up -d api worker
 
+# IP publico da VPS pra montar a URL de apontamento dos outros projetos
+# (Lovable etc). Best-effort: tenta servico externo, cai pro IP local.
+PUBLIC_IP=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo 'SEU_IP')
+API_KEY_VALUE=$(grep -E '^DEFAULT_API_KEY=' .env | cut -d= -f2-)
+
 echo
 echo '== Deploy concluido =='
-echo '  API:       http://SEU_IP:3000  (Swagger em /docs)'
-echo '  Dashboard: http://SEU_IP:8080'
-echo '  Postgres:  host 5433 -> container 5432 (nao usa a 5432 nativa da VPS)'
-echo '  Redis:     host 6380 -> container 6379 (nao usa a 6379 nativa da VPS)'
+echo "  Tier aplicado: ${TIER}  (${RAM_MB}MB RAM, ${CPUS} vCPU)"
+echo "  API:       http://${PUBLIC_IP}:3000  (Swagger em /docs)"
+echo "  Dashboard: http://${PUBLIC_IP}:8080"
+echo "  Postgres:  host ${PG_PORT} -> container 5432 (nao usa a nativa da VPS)"
+echo "  Redis:     host ${RD_PORT} -> container 6379 (nao usa a nativa da VPS)"
 echo '  Ollama:    container "ollama", so na rede interna do Docker'
 echo '  ComfyUI:   container "comfyui", so na rede interna do Docker'
 echo
-echo 'Recomendado: coloque um proxy TLS na frente (Traefik/Caddy/nginx + certbot).'
-echo 'Exemplo Traefik: docs/DEPLOY.md'
+echo '== Apontamento dos outros projetos (Lovable / SaaS) =='
+echo '  Cadastre estes secrets server-side (NUNCA no frontend/VITE_):'
+echo "    AI_PLATFORM_BASE_URL=http://${PUBLIC_IP}:3000"
+echo "    AI_PLATFORM_API_KEY=${API_KEY_VALUE}"
+echo '  Guia completo: docs/LOVABLE-PRODUCTION-INTEGRATION.md'
+echo
+echo 'Recomendado: coloque um proxy TLS na frente (Traefik/Caddy/nginx + certbot)'
+echo 'e use https://SEU_DOMINIO como AI_PLATFORM_BASE_URL. Exemplo: docs/DEPLOY.md'
