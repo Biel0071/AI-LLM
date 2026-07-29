@@ -196,6 +196,28 @@ set_env RATE_LIMIT_MAX 600
 set_env IMAGE_WORKER_CONCURRENCY 1
 # Imagens de vitrine por job de galeria - lite=1 (CPU escassa), power=3.
 set_env GALLERY_MAX_IMAGES_PER_JOB "$TIER_GALLERY_MAX"
+
+# ----- Hardening de rede/exposicao (Comando 1/2) -----
+# Detecta o IP publico da VPS pra bindar a API nele (nunca 0.0.0.0). O acesso
+# a 3000 e restringido depois pela chain DOCKER-USER (so origens autorizadas).
+DEPLOY_PUBLIC_IP=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo '')
+if [ -n "$DEPLOY_PUBLIC_IP" ]; then
+  set_env API_BIND_HOST "$DEPLOY_PUBLIC_IP"
+fi
+# Postgres, Redis e dashboard nunca escutam na internet - so loopback do host.
+set_env DB_BIND_HOST 127.0.0.1
+set_env REDIS_BIND_HOST 127.0.0.1
+set_env DASHBOARD_BIND_HOST 127.0.0.1
+# Swagger UI desligado em producao (nao revela a superficie da API). Ligue
+# manualmente (DOCS_ENABLED=true) se precisar inspecionar.
+set_env DOCS_ENABLED false
+# Token pro /metrics (Prometheus). Gera um se ainda nao existir no .env.
+if ! grep -q '^METRICS_TOKEN=.\+' .env 2>/dev/null; then
+  set_env METRICS_TOKEN "mtk_$(openssl rand -hex 16)"
+fi
+# Mantem o modelo de conversa residente no tier power (RAM sobra): a varredura
+# que libera memoria pro ComfyUI nao descarrega o modelo de texto.
+if [ "$TIER" = power ]; then set_env KEEP_CHAT_MODEL_RESIDENT true; else set_env KEEP_CHAT_MODEL_RESIDENT false; fi
 # .env.example vem com OLLAMA_DEFAULT_MODEL=llama3 (generico, exemplo) -
 # essa VPS so tem qwen2.5:3b instalado. Sem isso, qualquer chamada de
 # texto SEM task explicito (chat geral, "gerar descricao" etc) cai no
@@ -291,6 +313,37 @@ docker compose --profile vps exec -T ollama ollama pull nomic-embed-text
 bash scripts/vps-merge-lcm-checkpoint.sh
 docker compose --profile vps up -d api worker
 
+# 6b. Isolar a porta 3000 na chain DOCKER-USER. O bind no IP publico (Fase 3)
+# sozinho NAO fecha a porta: o Docker insere regras no iptables ANTES das
+# zonas do firewalld, entao "bloquear no firewalld" nao pega trafego
+# publicado por container. DOCKER-USER e avaliada antes das regras do proprio
+# Docker - e o unico ponto confiavel pra filtrar porta publicada. Regra:
+# aceita 3000 de loopback e das origens autorizadas (AI_PLATFORM_ALLOWED_SOURCES,
+# CSV de IPs/CIDRs - ex: o IP do FENIX no Comando 2), DROPA o resto. Idempotente.
+setup_gateway_firewall() {
+  command -v iptables >/dev/null 2>&1 || { echo '  AVISO: iptables ausente, pulei isolamento DOCKER-USER'; return 0; }
+  local MARK='AI_PLATFORM_GW_3000'
+  # Remove regras anteriores deste projeto (idempotencia) antes de reinserir.
+  while iptables -L DOCKER-USER -n --line-numbers 2>/dev/null | grep -q "$MARK"; do
+    local ln; ln=$(iptables -L DOCKER-USER -n --line-numbers 2>/dev/null | grep "$MARK" | head -1 | awk '{print $1}')
+    [ -n "$ln" ] && iptables -D DOCKER-USER "$ln" || break
+  done
+  # Loopback e a propria VPS sempre podem.
+  iptables -I DOCKER-USER -p tcp --dport 3000 -s 127.0.0.1 -m comment --comment "$MARK" -j RETURN
+  # Origens autorizadas (CSV no .env). Vazio = so loopback alcanca a 3000.
+  local sources; sources=$(grep -E '^AI_PLATFORM_ALLOWED_SOURCES=' .env 2>/dev/null | cut -d= -f2- | tr ',' ' ')
+  for src in $sources; do
+    [ -n "$src" ] && iptables -I DOCKER-USER -p tcp --dport 3000 -s "$src" -m comment --comment "$MARK" -j RETURN
+  done
+  # Bloqueia todo o resto destinado a 3000 (inclui a internet publica).
+  iptables -A DOCKER-USER -p tcp --dport 3000 -m comment --comment "$MARK" -j DROP
+  # Persiste se o host tiver iptables-save (sobrevive a reboot).
+  command -v netfilter-persistent >/dev/null 2>&1 && netfilter-persistent save 2>/dev/null || \
+    { mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4 2>/dev/null || true; }
+  echo "  Firewall 3000: liberado pra loopback${sources:+ + [$sources]}, DROP pro resto."
+}
+setup_gateway_firewall
+
 # IP publico da VPS pra montar a URL de apontamento dos outros projetos
 # (Lovable etc). Best-effort: tenta servico externo, cai pro IP local.
 PUBLIC_IP=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo 'SEU_IP')
@@ -299,18 +352,22 @@ API_KEY_VALUE=$(grep -E '^DEFAULT_API_KEY=' .env | cut -d= -f2-)
 echo
 echo '== Deploy concluido =='
 echo "  Tier aplicado: ${TIER}  (${RAM_MB}MB RAM, ${CPUS} vCPU)"
-echo "  API:       http://${PUBLIC_IP}:3000  (Swagger em /docs)"
-echo "  Dashboard: http://${PUBLIC_IP}:8080"
-echo "  Postgres:  host ${PG_PORT} -> container 5432 (nao usa a nativa da VPS)"
-echo "  Redis:     host ${RD_PORT} -> container 6379 (nao usa a nativa da VPS)"
+echo "  API:       http://${PUBLIC_IP}:3000  (fechada na internet via DOCKER-USER;"
+echo "             libere origens em AI_PLATFORM_ALLOWED_SOURCES no .env)"
+echo "  Dashboard: bind 127.0.0.1:8080 (so local; use proxy TLS pra expor)"
+echo "  Swagger:   /docs DESLIGADO em producao (DOCS_ENABLED=false)"
+echo "  Postgres:  bind 127.0.0.1:${PG_PORT} (nunca exposto)"
+echo "  Redis:     bind 127.0.0.1:${RD_PORT} (nunca exposto)"
 echo '  Ollama:    container "ollama", so na rede interna do Docker'
 echo '  ComfyUI:   container "comfyui", so na rede interna do Docker'
 echo
-echo '== Apontamento dos outros projetos (Lovable / SaaS) =='
-echo '  Cadastre estes secrets server-side (NUNCA no frontend/VITE_):'
+echo '== Apontamento dos outros projetos (FENIX / Lovable) =='
+echo '  A 3000 so aceita as origens listadas em AI_PLATFORM_ALLOWED_SOURCES'
+echo '  (CSV de IPs/CIDRs no .env). Adicione o IP do cliente e rode o deploy'
+echo '  de novo, ou a regra DOCKER-USER manualmente. Secrets server-side:'
 echo "    AI_PLATFORM_BASE_URL=http://${PUBLIC_IP}:3000"
 echo "    AI_PLATFORM_API_KEY=${API_KEY_VALUE}"
-echo '  Guia completo: docs/LOVABLE-PRODUCTION-INTEGRATION.md'
+echo '  Guia: docs/LOVABLE-PRODUCTION-INTEGRATION.md'
 echo
-echo 'Recomendado: coloque um proxy TLS na frente (Traefik/Caddy/nginx + certbot)'
-echo 'e use https://SEU_DOMINIO como AI_PLATFORM_BASE_URL. Exemplo: docs/DEPLOY.md'
+echo 'Recomendado: proxy TLS na frente (Traefik/Caddy/nginx + certbot) e um'
+echo 'dominio HTTPS como base_url. Exemplo: docs/DEPLOY.md'
