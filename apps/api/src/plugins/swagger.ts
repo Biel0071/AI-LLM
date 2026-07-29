@@ -2,7 +2,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import type { FastifyInstance } from 'fastify';
 
-export async function registerSwagger(app: FastifyInstance): Promise<void> {
+export async function registerSwagger(app: FastifyInstance, docsEnabled = true): Promise<void> {
   await app.register(swagger, {
     openapi: {
       openapi: '3.0.3',
@@ -27,7 +27,12 @@ export async function registerSwagger(app: FastifyInstance): Promise<void> {
     },
   });
 
-  await app.register(swaggerUi, {
-    routePrefix: '/docs',
-  });
+  // O schema OpenAPI continua sendo gerado sempre (util internamente); o UI
+  // publico em /docs so e montado quando habilitado (desligue em producao
+  // exposta pra nao revelar a superficie da API sem necessidade).
+  if (docsEnabled) {
+    await app.register(swaggerUi, {
+      routePrefix: '/docs',
+    });
+  }
 }

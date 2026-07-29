@@ -31,6 +31,14 @@ const envSchema = z.object({
     .string()
     .default('true')
     .transform((v) => v !== 'false'),
+  // Se definido, /metrics exige header Authorization: Bearer <token> (ou
+  // x-metrics-token). Vazio = /metrics aberto (so use atras de rede interna).
+  METRICS_TOKEN: z.string().optional(),
+  // Swagger UI (/docs) desligado por padrao em producao; ligue explicitamente.
+  DOCS_ENABLED: z
+    .string()
+    .default('true')
+    .transform((v) => v !== 'false'),
 
   QUEUE_PREFIX: z.string().default('aiplatform'),
   JOB_WAIT_TIMEOUT_MS: z.coerce.number().default(180_000),

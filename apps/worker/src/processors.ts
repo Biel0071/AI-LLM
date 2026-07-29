@@ -32,13 +32,24 @@ const execFileAsync = promisify(execFile);
 async function releaseOllamaMemoryForImage(): Promise<void> {
   const base = process.env.OLLAMA_BASE_URL?.replace(/\/$/, '');
   if (!base) return;
+  // O modelo de conversa/texto default fica pinado (keep_alive:-1) e NAO deve
+  // ser descarregado aqui - senao toda geracao de imagem forcava um reload de
+  // ~7-15s no proximo texto/chat. Descarrega apenas os OUTROS modelos ociosos
+  // (visao, embed) para liberar RAM ao ComfyUI. Em VPS com folga de RAM (tier
+  // power), essa varredura vira no-op via KEEP_CHAT_MODEL_RESIDENT.
+  const pinned = new Set(
+    [process.env.OLLAMA_DEFAULT_MODEL, process.env.OLLAMA_FAST_MODEL]
+      .filter(Boolean)
+      .map((m) => String(m)),
+  );
+  if (process.env.KEEP_CHAT_MODEL_RESIDENT === 'true') return;
   try {
     const response = await fetch(`${base}/api/ps`, { signal: AbortSignal.timeout(5_000) });
     if (!response.ok) return;
     const data = await response.json() as { models?: Array<{ name?: string; model?: string }> };
     for (const loaded of data.models ?? []) {
       const model = loaded.name ?? loaded.model;
-      if (!model) continue;
+      if (!model || pinned.has(model)) continue;
       await fetch(`${base}/api/generate`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

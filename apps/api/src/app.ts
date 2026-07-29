@@ -30,7 +30,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await registerSecurity(app);
   await registerAuth(app);
-  await registerSwagger(app);
+  await registerSwagger(app, env.DOCS_ENABLED);
 
   // ---------- Tratamento de erros padrao ----------
   app.setErrorHandler((err, _req, reply) => {
@@ -78,7 +78,17 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // ---------- Metricas Prometheus ----------
   if (env.METRICS_ENABLED) {
-    app.get('/metrics', { schema: { tags: ['system'] } }, async (_req, reply) => {
+    app.get('/metrics', { schema: { tags: ['system'] } }, async (req, reply) => {
+      // Se METRICS_TOKEN estiver definido, exige-o (Bearer ou x-metrics-token).
+      // Sem token configurado, mantem aberto (assume rede interna/firewall).
+      if (env.METRICS_TOKEN) {
+        const auth = req.headers.authorization;
+        const bearer = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
+        const provided = bearer ?? (req.headers['x-metrics-token'] as string | undefined);
+        if (provided !== env.METRICS_TOKEN) {
+          return reply.code(401).send(fail('UNAUTHORIZED', 'metrics token invalido ou ausente'));
+        }
+      }
       reply.header('content-type', registryProm.contentType);
       return registryProm.metrics();
     });
