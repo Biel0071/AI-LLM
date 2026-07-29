@@ -265,7 +265,8 @@ done
 export MEM_POSTGRES="$TIER_MEM_POSTGRES" MEM_REDIS="$TIER_MEM_REDIS"
 export MEM_API="$TIER_MEM_API" MEM_WORKER="$TIER_MEM_WORKER"
 export MEM_OLLAMA="$TIER_MEM_OLLAMA" MEM_COMFYUI="$TIER_MEM_COMFYUI"
-docker compose --profile vps up -d --build
+# `|| true`: ver nota no passo 6 - compose pode retornar rc!=0 em sucesso.
+docker compose --profile vps up -d --build || true
 
 # 4b. Watchdog do host: Docker nao reinicia um container apenas por estar
 # unhealthy. O timer verifica a cada minuto e reinicia somente o componente
@@ -311,7 +312,11 @@ docker compose --profile vps exec -T ollama ollama pull nomic-embed-text
 # node a cada geracao custava ~30s fixos por chamada. Precisa do
 # container comfyui ja rodando (passo 4 acima), por isso vem depois.
 bash scripts/vps-merge-lcm-checkpoint.sh
-docker compose --profile vps up -d api worker
+# `|| true`: algumas versoes do docker compose retornam rc!=0 ao recriar
+# containers mesmo em sucesso (logs de progresso no stderr). Sob `set -e`
+# isso matava o deploy AQUI, antes do hardening de firewall abaixo - deixando
+# a 3000 aberta. O passo e best-effort; a verificacao de health no fim valida.
+docker compose --profile vps up -d api worker || true
 
 # 6b. Isolar a porta 3000 na chain DOCKER-USER. O bind no IP publico (Fase 3)
 # sozinho NAO fecha a porta: o Docker insere regras no iptables ANTES das
@@ -342,7 +347,7 @@ setup_gateway_firewall() {
     { mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4 2>/dev/null || true; }
   echo "  Firewall 3000: liberado pra loopback${sources:+ + [$sources]}, DROP pro resto."
 }
-setup_gateway_firewall
+setup_gateway_firewall || echo '  AVISO: setup_gateway_firewall retornou erro - verifique a chain DOCKER-USER manualmente'
 
 # IP publico da VPS pra montar a URL de apontamento dos outros projetos
 # (Lovable etc). Best-effort: tenta servico externo, cai pro IP local.
