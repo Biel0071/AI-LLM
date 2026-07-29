@@ -38,6 +38,9 @@ export const textSchema = z.object({
   /** auto enfileira durante picos; sync nunca espera em memoria; async sempre enfileira. */
   execution: z.enum(['auto', 'sync', 'async']).optional().default('auto'),
   ...common,
+}).refine((value) => value.task !== 'vision', {
+  path: ['task'],
+  message: 'task vision requer imagens; use POST /v1/vision ou type vision em /v1/jobs',
 });
 
 export const chatSchema = z.object({

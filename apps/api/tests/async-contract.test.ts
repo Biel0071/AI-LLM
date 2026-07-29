@@ -15,6 +15,10 @@ describe('large workload and reverse callback contracts', () => {
     expect(parsed.callback?.url).toBe('https://example.com/hooks/ai');
   });
 
+  it('rejects vision work sent through the text-only endpoint', () => {
+    expect(() => textSchema.parse({ prompt: 'analise', task: 'vision', execution: 'async' })).toThrow();
+  });
+
   it('accepts callbacks on generic jobs and rejects weak secrets', () => {
     expect(jobSchema.parse({
       type: 'seo', payload: { product: 'Tenis' },
