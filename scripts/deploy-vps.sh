@@ -287,16 +287,40 @@ cat >/etc/systemd/system/ai-platform-watchdog.timer <<'EOF'
 Description=Run AI Platform health recovery every minute
 
 [Timer]
-OnBootSec=2min
+# OnBootSec baixo: o watchdog tambem reaplica o firewall da 3000, entao a
+# primeira passada precisa ser cedo (o Docker recria a chain DOCKER-USER
+# vazia no boot - ver ai-platform-firewall.service, que fecha a janela
+# principal; este timer e a rede de seguranca continua).
+OnBootSec=20s
 OnUnitActiveSec=1min
-AccuracySec=10s
+AccuracySec=5s
 Persistent=true
 
 [Install]
 WantedBy=timers.target
 EOF
+
+# 4c. Firewall no boot: a chain DOCKER-USER e recriada VAZIA quando o Docker
+# sobe no boot, reabrindo a 3000 por ~2min ate o timer do watchdog rodar
+# (janela de exposicao medida). Este oneshot roda LOGO APOS o docker.service,
+# aplicando a regra antes que a janela importe. Reusa o watchdog (idempotente).
+cat >/etc/systemd/system/ai-platform-firewall.service <<'EOF'
+[Unit]
+Description=AI Platform port-3000 firewall (apply on boot, after Docker)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ai-platform-watchdog
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
 systemctl daemon-reload
 systemctl enable --now ai-platform-watchdog.timer
+systemctl enable ai-platform-firewall.service
 
 # 5. Baixa os modelos dentro do container ollama (a primeira vez que sobe,
 # o volume esta vazio). Os 4 juntos cabem em disco tranquilo (~4GB) - o
