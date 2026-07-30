@@ -32,6 +32,8 @@ import { persistImageResponse } from '../../services/image-storage.service';
 import { populationSummary, queueEntryPopulation, queuePopulationSummary } from '../../services/population.service';
 import { reverseRoutes } from './reverse';
 import { memoryRoutes } from './memory';
+import { ConfigurationCenterService } from '../../services/configuration-center.service';
+import { SyncCenterService } from '../../services/sync-center.service';
 
 function resolveJobQueue(type: string, payload: Record<string, unknown>): QueueName {
   if (type === 'text' && payload.task === 'vision') {
@@ -54,6 +56,9 @@ function acquireSynchronousTextSlot(): (() => void) | undefined {
   };
 }
 export async function v1Routes(app: FastifyInstance): Promise<void> {
+  const configCenter = new ConfigurationCenterService();
+  const syncCenter = new SyncCenterService();
+
   // Todas as rotas /v1 exigem API key + rate limit por chave
   app.addHook('onRequest', app.requireApiKey);
   const scopeByRoute: Record<string, string> = {
@@ -61,6 +66,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     '/video-to-image': 'image', '/remove-background': 'image', '/inpaint': 'image',
     '/outpaint': 'image', '/controlnet': 'image', '/upscale': 'image', '/vision': 'vision',
     '/embed': 'embed', '/embedding': 'embed', '/ocr': 'ocr', '/video': 'video', '/workflow': 'workflow',
+    '/config': 'admin', '/sync/cluster': 'text', '/sync/heartbeat': 'text',
   };
   app.addHook('preHandler', async (req, reply) => {
     const requestProjectId = (req.body as { projectId?: string } | undefined)?.projectId;
@@ -101,6 +107,26 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
 
   await app.register(reverseRoutes);
   await app.register(memoryRoutes);
+
+  // ---------- Centro de Configuração e Sync de Cluster ----------
+  app.get('/config', { schema: { tags: ['v1'] } }, async () => {
+    return { success: true, config: configCenter.getConfig() };
+  });
+
+  app.post('/config', { schema: { tags: ['v1'] } }, async (req) => {
+    const updated = configCenter.updateConfig((req.body as any) || {});
+    return { success: true, config: updated };
+  });
+
+  app.get('/sync/cluster', { schema: { tags: ['v1'] } }, async () => {
+    return { success: true, ...syncCenter.getClusterStatus() };
+  });
+
+  app.post('/sync/heartbeat', { schema: { tags: ['v1'] } }, async (req) => {
+    const { nodeId, metrics } = (req.body as any) || {};
+    const node = syncCenter.heartbeat(nodeId, metrics);
+    return { success: true, node };
+  });
 
   // ---------- Texto ----------
   app.post('/text', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {

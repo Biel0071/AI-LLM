@@ -33,7 +33,7 @@ function extractApiKey(req: FastifyRequest): string | undefined {
   const headerKey = req.headers['x-api-key'];
   if (typeof headerKey === 'string' && headerKey) return headerKey;
   const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ap_')) return auth.slice('Bearer '.length);
+  if (auth?.startsWith('Bearer ')) return auth.slice('Bearer '.length).trim();
   return undefined;
 }
 
