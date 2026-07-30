@@ -7,21 +7,6 @@ export async function registerOpenAICompatRoutes(fastify: FastifyInstance) {
 
   const routerService = new CapabilityRouterService();
 
-  // GET /v1/models — Lista de modelos disponíveis no formato OpenAI
-  fastify.get('/v1/models', async (request, reply) => {
-    return reply.send({
-      object: 'list',
-      data: [
-        { id: 'auto', object: 'model', created: Date.now(), owned_by: 'ai-platform' },
-        { id: 'llama-3.3-70b-versatile', object: 'model', created: Date.now(), owned_by: 'groq' },
-        { id: 'meta-llama/llama-3.1-70b-instruct', object: 'model', created: Date.now(), owned_by: 'openrouter' },
-        { id: 'llama3:latest', object: 'model', created: Date.now(), owned_by: 'ollama' },
-        { id: 'whisper-large-v3', object: 'model', created: Date.now(), owned_by: 'whisper' },
-        { id: 'sdxl_turbo', object: 'model', created: Date.now(), owned_by: 'comfyui' },
-      ],
-    });
-  });
-
   // POST /v1/chat/completions — End-point compativel com OpenAI Chat Completions API
   fastify.post('/v1/chat/completions', async (request: any, reply) => {
     const { messages, model, temperature, max_tokens } = request.body || {};

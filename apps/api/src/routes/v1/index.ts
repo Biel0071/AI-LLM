@@ -452,6 +452,14 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // ---------- Modelos ----------
   app.get('/models', { schema: { tags: ['v1'] } }, async (req) => {
     const { provider } = req.query as { provider?: string };
+    const openAiData = [
+      { id: 'auto', object: 'model', created: 1700000000, owned_by: 'ai-platform' },
+      { id: 'llama-3.3-70b-versatile', object: 'model', created: 1700000000, owned_by: 'groq' },
+      { id: 'meta-llama/llama-3.1-70b-instruct', object: 'model', created: 1700000000, owned_by: 'openrouter' },
+      { id: 'llama3:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
+      { id: 'whisper-large-v3', object: 'model', created: 1700000000, owned_by: 'whisper' },
+      { id: 'sdxl_turbo', object: 'model', created: 1700000000, owned_by: 'comfyui' },
+    ];
     const providers = provider ? [registry.get(provider)] : registry.list();
     const results = await Promise.all(
       providers.map(async (p) => {
@@ -462,7 +470,12 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
         }
       }),
     );
-    return { success: true, providers: results };
+    return {
+      object: 'list',
+      data: openAiData,
+      success: true,
+      providers: results,
+    };
   });
 
   // ---------- Providers ----------
