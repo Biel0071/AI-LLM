@@ -48,4 +48,41 @@ export async function bootstrap(): Promise<void> {
         'Ela nao sera exibida novamente; gere novas chaves pelo dashboard.',
     );
   }
+
+  // Provider config padrao para Ollama (Open-Source Local)
+  const ollamaConfig = await prisma.providerConfig.findUnique({ where: { name: 'ollama' } });
+  if (!ollamaConfig) {
+    const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://ai-platform-ollama-1:11434';
+    await prisma.providerConfig.create({
+      data: {
+        name: 'ollama',
+        enabled: true,
+        baseUrl: ollamaUrl,
+        settings: {
+          baseUrl: ollamaUrl,
+          defaultModel: process.env.OLLAMA_DEFAULT_MODEL || 'llama3:latest',
+          embedModel: process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text',
+        },
+      },
+    });
+    logger.info('default ollama provider config created');
+  }
+
+  // Provider config padrao para Groq (Open-Source Gratis Cloud)
+  const groqConfig = await prisma.providerConfig.findUnique({ where: { name: 'groq' } });
+  if (!groqConfig) {
+    await prisma.providerConfig.create({
+      data: {
+        name: 'groq',
+        enabled: true,
+        baseUrl: 'https://api.groq.com/openai/v1',
+        settings: {
+          baseUrl: 'https://api.groq.com/openai/v1',
+          defaultModel: 'llama-3.3-70b-versatile',
+        },
+      },
+    });
+    logger.info('default groq provider config created');
+  }
 }
+

@@ -67,6 +67,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     '/outpaint': 'image', '/controlnet': 'image', '/upscale': 'image', '/vision': 'vision',
     '/embed': 'embed', '/embedding': 'embed', '/ocr': 'ocr', '/video': 'video', '/workflow': 'workflow',
     '/config': 'admin', '/sync/cluster': 'text', '/sync/heartbeat': 'text',
+    '/queue/enqueue': 'text', '/queue/status': 'text', '/queue/stats': 'text',
   };
   app.addHook('preHandler', async (req, reply) => {
     const requestProjectId = (req.body as { projectId?: string } | undefined)?.projectId;
@@ -454,9 +455,13 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const { provider } = req.query as { provider?: string };
     const openAiData = [
       { id: 'auto', object: 'model', created: 1700000000, owned_by: 'ai-platform' },
+      { id: 'qwen2.5:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
+      { id: 'llama3:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
+      { id: 'deepseek-r1:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
       { id: 'llama-3.3-70b-versatile', object: 'model', created: 1700000000, owned_by: 'groq' },
       { id: 'meta-llama/llama-3.1-70b-instruct', object: 'model', created: 1700000000, owned_by: 'openrouter' },
-      { id: 'llama3:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
+      { id: 'gemma2:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
+      { id: 'mistral:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
       { id: 'whisper-large-v3', object: 'model', created: 1700000000, owned_by: 'whisper' },
       { id: 'sdxl_turbo', object: 'model', created: 1700000000, owned_by: 'comfyui' },
     ];
@@ -475,6 +480,38 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       data: openAiData,
       success: true,
       providers: results,
+    };
+  });
+
+  // ---------- Fênix / Orchestrator Queue API ----------
+  app.post('/queue/enqueue', { config: rlConfig, schema: { tags: ['v1', 'queue'] } }, async (req, reply) => {
+    const body = z.object({
+      queue: z.enum(['text', 'vision', 'image', 'embedding', 'ocr', 'seo', 'translation', 'classification', 'webhook']),
+      payload: z.record(z.any()),
+      priority: z.number().int().min(1).max(10).optional().default(5),
+      callback: z.object({ url: z.string().url(), secret: z.string().optional() }).optional(),
+    }).parse(req.body);
+
+    const queued = await enqueueWithTiming(body.queue as QueueName, body.payload, {
+      tenantId: req.auth?.tenantId,
+      projectId: req.auth?.projectId,
+      priority: body.priority,
+      callback: body.callback,
+    });
+    return reply.code(202).send({
+      success: true,
+      ...queued,
+      status: 'waiting',
+      ...queueEntryPopulation(queued.queue),
+    });
+  });
+
+  app.get('/queue/status', { schema: { tags: ['v1', 'queue'] } }, async () => {
+    const stats = await queueStats();
+    return {
+      success: true,
+      queues: stats,
+      totalQueued: stats.reduce((acc, q) => acc + q.queued, 0),
     };
   });
 
