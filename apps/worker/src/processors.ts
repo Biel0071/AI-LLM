@@ -127,7 +127,7 @@ export const textProcessor: ProcessorFn = async (job, registry) => {
   if (data.task === 'vision') {
     throw new Error('validation: task vision requires images and queue type "vision"');
   }
-  return runWithFallback(registry, 'text', data.provider, (provider, routedModel) =>
+  return runWithFallback(registry, 'chat', data.provider, (provider, routedModel) =>
     provider.generateText({ ...data, model: data.model ?? routedModel }), data.task ?? 'general',
   );
 };
@@ -248,8 +248,8 @@ export const imageProcessor: ProcessorFn = async (job, registry) => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   }
   if (data.__kind === 'upscale') {
-    return runWithFallback(registry, 'upscale', data.provider, (provider) =>
-      provider.upscale({ image: data.image, scale: data.scale, model: data.model }),
+    return runWithFallback(registry, 'image', data.provider, (provider) =>
+      (provider as any).upscale({ image: data.image, scale: data.scale, model: data.model }),
     );
   }
   return runWithFallback(registry, 'image', data.provider, (provider) => provider.generateImage(data as any));
@@ -258,7 +258,7 @@ export const imageProcessor: ProcessorFn = async (job, registry) => {
 // ---------- Worker Embedding ----------
 export const embeddingProcessor: ProcessorFn = async (job, registry) => {
   const data = job.data as { input: string | string[]; provider?: string; model?: string };
-  return runWithFallback(registry, 'embed', data.provider, (provider, routedModel) =>
+  return runWithFallback(registry, 'embedding', data.provider, (provider, routedModel) =>
     provider.embed({ ...data, model: data.model ?? routedModel }), 'embed',
   );
 };
@@ -345,7 +345,7 @@ export const seoProcessor: ProcessorFn = async (job, registry) => {
     '}',
   ].join('\n');
 
-  const res = await runWithFallback(registry, 'text', data.provider, (provider, routedModel) =>
+  const res = await runWithFallback(registry, 'chat', data.provider, (provider, routedModel) =>
     provider.generateText({ prompt, model: data.model ?? routedModel, json: true }), 'seo',
   );
   // tenta estruturar o JSON gerado
@@ -373,7 +373,7 @@ export const translationProcessor: ProcessorFn = async (job, registry) => {
     (data.sourceLanguage ? ` (idioma de origem: ${data.sourceLanguage})` : '') +
     '. Responda APENAS com a traducao, sem explicacoes.\n\n' +
     data.text;
-  return runWithFallback(registry, 'text', data.provider, (provider, routedModel) =>
+  return runWithFallback(registry, 'chat', data.provider, (provider, routedModel) =>
     provider.generateText({ prompt, model: data.model ?? routedModel }), 'translation',
   );
 };
@@ -387,7 +387,7 @@ export const classificationProcessor: ProcessorFn = async (job, registry) => {
     `Categorias permitidas (copie uma delas sem alterar): ${data.categories.map((category) => `[${category}]`).join(', ')}.\n` +
     'Não use sinônimos, explicações, pontuação ou categorias diferentes. Responda APENAS com o texto exato dentro de um dos colchetes.\n\n' +
     data.text;
-  const res = await runWithFallback(registry, 'text', data.provider, (provider, routedModel) =>
+  const res = await runWithFallback(registry, 'chat', data.provider, (provider, routedModel) =>
     provider.generateText({ prompt, model: data.model ?? routedModel }), task,
   );
   const raw = (res.result as { text: string }).text.trim();
