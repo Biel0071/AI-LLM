@@ -66,11 +66,33 @@ export async function buildApp(): Promise<FastifyInstance> {
       checks.redis = false;
     }
     const healthy = Object.values(checks).every(Boolean);
+
+    const providerDetails: Record<string, any> = {};
+    for (const p of registry.list()) {
+      try {
+        const start = Date.now();
+        const health = await p.health();
+        const latency = Date.now() - start;
+        let models: string[] = [];
+        try {
+          models = (await p.models()).map((m) => m.id);
+        } catch { /* ignore model fetch errors */ }
+        providerDetails[p.name] = {
+          online: health.ok,
+          latency: health.latencyMs ?? latency,
+          models,
+          message: health.message,
+        };
+      } catch (err) {
+        providerDetails[p.name] = { online: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
     return {
       success: healthy,
       status: healthy ? 'ok' : 'degraded',
       checks,
-      providers: registry.list().map((p) => p.name),
+      providers: providerDetails,
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
     };

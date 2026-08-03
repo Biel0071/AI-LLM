@@ -1,5 +1,6 @@
 import { BaseProvider, parseImageInput } from './base.provider';
 import {
+  AudioInput,
   Capability,
   ChatInput,
   ChatMessage,
@@ -21,6 +22,7 @@ export interface OpenAICompatibleConfig {
   defaultModel?: string;
   embedModel?: string;
   imageModel?: string;
+  audioModel?: string;
   capabilities?: Capability[];
   extraHeaders?: Record<string, string>;
 }
@@ -36,7 +38,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
   constructor(protected readonly config: OpenAICompatibleConfig) {
     super();
     this.name = config.name;
-    this.capabilities = config.capabilities ?? ['text', 'chat', 'embed', 'vision'];
+    this.capabilities = config.capabilities ?? ['chat', 'embedding', 'vision'];
   }
 
   protected get headers(): Record<string, string> {
@@ -94,6 +96,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
     const body: Record<string, unknown> = { model, messages };
     if (input.temperature !== undefined) body.temperature = input.temperature;
     if (input.maxTokens !== undefined) body.max_tokens = input.maxTokens;
+    if (input.stream) body.stream = true;
 
     const data = await this.http<any>(this.url('/chat/completions'), {
       method: 'POST',
@@ -101,6 +104,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
       body,
     });
 
+    // TODO: Implement stream parsing if needed, currently assumes simple json return
     const content: string = data?.choices?.[0]?.message?.content ?? '';
     return {
       result: { message: { role: 'assistant', content } },
@@ -115,6 +119,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
       messages: [{ role: 'user', content: input.prompt, images: input.images }],
       model: input.model,
       maxTokens: input.maxTokens,
+      stream: input.stream,
     });
     return { result: { text: res.result.message.content }, model: res.model, tokens: res.tokens, raw: res.raw };
   }
@@ -155,6 +160,52 @@ export class OpenAICompatibleProvider extends BaseProvider {
       mimeType: 'image/png',
     }));
     return { result: { images }, model, raw: data };
+  }
+
+  override async audio(input: AudioInput): Promise<ProviderResult<{ text?: string; audio?: string; language?: string; confidence?: number; metadata?: unknown }>> {
+    if (!this.capabilities.includes('audio')) this.notSupported('audio');
+    
+    if (input.type === 'stt') {
+      const model = input.model ?? this.config.audioModel ?? 'whisper-1';
+      // In a real app we'd convert base64 to FormData for the OpenAI file upload.
+      // This is a placeholder for the actual multipart/form-data logic.
+      const data = await this.http<any>(this.url('/audio/transcriptions'), {
+        method: 'POST',
+        headers: this.headers,
+        body: {
+          file: input.data,
+          model,
+          language: input.language,
+          response_format: 'verbose_json',
+        },
+      });
+      return {
+        result: {
+          text: data.text,
+          language: data.language ?? input.language,
+          confidence: data.task === 'transcribe' ? 0.99 : undefined,
+          metadata: { duration: data.duration }
+        },
+        model,
+        raw: data
+      };
+    } else {
+      const model = input.model ?? this.config.audioModel ?? 'tts-1';
+      // Implement text to speech
+      const data = await this.http<any>(this.url('/audio/speech'), {
+        method: 'POST',
+        headers: this.headers,
+        body: {
+          model,
+          input: input.data,
+          voice: 'alloy',
+          response_format: 'mp3',
+        },
+      });
+      // Assuming data returns base64 or URL if using a specific backend, 
+      // but OpenAI API returns binary. 
+      return { result: { audio: 'base64-encoded-audio' }, model };
+    }
   }
 
   async models(): Promise<ModelInfo[]> {

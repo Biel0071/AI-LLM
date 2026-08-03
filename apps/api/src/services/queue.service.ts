@@ -158,6 +158,13 @@ export async function queueStats(): Promise<
       runtimeConcurrencyFor(name),
     ]);
     const queued = (counts.waiting ?? 0) + (counts.active ?? 0) + (counts.delayed ?? 0) + (counts.prioritized ?? 0);
+    
+    // Update metric
+    try {
+      const { metrics } = require('../metrics');
+      metrics.queueDepth.set({ queue: name }, counts.waiting ?? 0);
+    } catch { /* ignore if metrics not available */ }
+
     return {
       name,
       waiting: counts.waiting ?? 0,

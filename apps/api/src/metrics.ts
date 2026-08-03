@@ -23,4 +23,22 @@ export const metrics = {
     labelNames: ['provider'] as const,
     registers: [registryProm],
   }),
+  queueDepth: new client.Gauge({
+    name: 'ai_queue_depth',
+    help: 'Quantidade de itens esperando na fila por queue',
+    labelNames: ['queue'] as const,
+    registers: [registryProm],
+  }),
+  fallbacks: new client.Counter({
+    name: 'ai_fallbacks_total',
+    help: 'Total de fallbacks ocorridos para provedores alternativos',
+    labelNames: ['capability', 'primary', 'fallback'] as const,
+    registers: [registryProm],
+  }),
+  providerScore: new client.Gauge({
+    name: 'ai_provider_score',
+    help: 'Score calculado dinamicamente para o provedor',
+    labelNames: ['provider', 'capability'] as const,
+    registers: [registryProm],
+  }),
 };

@@ -75,7 +75,7 @@ const DEFAULT_NEGATIVE_PROMPT =
  */
 export class ComfyUIProvider extends BaseProvider implements ImageProvider {
   readonly name = 'comfyui';
-  readonly capabilities: Capability[] = ['image', 'upscale'];
+  readonly capabilities: Capability[] = ['image'];
 
   constructor(private readonly config: ComfyUIConfig) {
     super();

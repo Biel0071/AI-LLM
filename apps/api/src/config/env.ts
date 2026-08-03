@@ -20,6 +20,12 @@ const envSchema = z.object({
 
   RATE_LIMIT_MAX: z.coerce.number().default(120),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_TEXT_MAX: z.coerce.number().default(120),
+  RATE_LIMIT_IMAGE_MAX: z.coerce.number().default(30),
+  RATE_LIMIT_VISION_MAX: z.coerce.number().default(30),
+  RATE_LIMIT_AUDIO_MAX: z.coerce.number().default(30),
+  RATE_LIMIT_EMBED_MAX: z.coerce.number().default(200),
+  RATE_LIMIT_MISSION_MAX: z.coerce.number().default(10),
 
   CACHE_ENABLED: z
     .string()

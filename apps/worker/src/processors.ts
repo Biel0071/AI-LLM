@@ -443,6 +443,22 @@ export const webhookProcessor: ProcessorFn = async (job) => {
   });
 };
 
+// ---------- Worker Audio ----------
+export const audioProcessor: ProcessorFn = async (job, registry) => {
+  const data = job.data as any;
+  return runWithFallback(registry, 'audio', data.provider, (provider, routedModel) =>
+    provider.audio ? provider.audio({ ...data, model: data.model ?? routedModel }) : (provider as any).notSupported('audio'), 'general',
+  );
+};
+
+// ---------- Worker Mission ----------
+export const missionProcessor: ProcessorFn = async (job, registry) => {
+  const data = job.data as any;
+  return runWithFallback(registry, 'mission', data.provider, (provider, routedModel) =>
+    provider.mission ? provider.mission({ ...data, model: data.model ?? routedModel }) : (provider as any).notSupported('mission'), 'general',
+  );
+};
+
 export const processors: Record<string, ProcessorFn> = {
   text: textProcessor,
   vision: visionProcessor,
@@ -453,4 +469,6 @@ export const processors: Record<string, ProcessorFn> = {
   translation: translationProcessor,
   classification: classificationProcessor,
   webhook: webhookProcessor,
+  audio: audioProcessor,
+  mission: missionProcessor,
 };

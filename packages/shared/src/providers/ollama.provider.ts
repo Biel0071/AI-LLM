@@ -77,7 +77,7 @@ class Semaphore {
  */
 export class OllamaProvider extends BaseProvider {
   readonly name = 'ollama';
-  readonly capabilities: Capability[] = ['text', 'chat', 'embed', 'vision'];
+  readonly capabilities: Capability[] = ['chat', 'embedding', 'vision'];
   private readonly semaphore: Semaphore;
 
   constructor(private readonly config: OllamaConfig) {

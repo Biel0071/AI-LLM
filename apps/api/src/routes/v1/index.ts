@@ -3,6 +3,7 @@ import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
 import {
+  audioSchema,
   chatSchema,
   ComfyUIProvider,
   embedSchema,
@@ -18,6 +19,7 @@ import {
   controlnetSchema,
   ImageProvider,
   jobSchema,
+  missionSchema,
   ocrSchema,
   ProviderError,
   textSchema,
@@ -102,9 +104,13 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     return reply.code(403).send(fail('INSUFFICIENT_SCOPE', `A API key nao possui o escopo ${required}`));
   });
 
-  const rlConfig = {
-    rateLimit: { max: env.RATE_LIMIT_MAX, timeWindow: env.RATE_LIMIT_WINDOW_MS },
-  };
+  const rlText = { rateLimit: { max: env.RATE_LIMIT_TEXT_MAX, timeWindow: env.RATE_LIMIT_WINDOW_MS } };
+  const rlImage = { rateLimit: { max: env.RATE_LIMIT_IMAGE_MAX, timeWindow: env.RATE_LIMIT_WINDOW_MS } };
+  const rlVision = { rateLimit: { max: env.RATE_LIMIT_VISION_MAX, timeWindow: env.RATE_LIMIT_WINDOW_MS } };
+  const rlAudio = { rateLimit: { max: env.RATE_LIMIT_AUDIO_MAX, timeWindow: env.RATE_LIMIT_WINDOW_MS } };
+  const rlEmbed = { rateLimit: { max: env.RATE_LIMIT_EMBED_MAX, timeWindow: env.RATE_LIMIT_WINDOW_MS } };
+  const rlMission = { rateLimit: { max: env.RATE_LIMIT_MISSION_MAX, timeWindow: env.RATE_LIMIT_WINDOW_MS } };
+  const rlDefault = { rateLimit: { max: env.RATE_LIMIT_MAX, timeWindow: env.RATE_LIMIT_WINDOW_MS } };
 
   await app.register(reverseRoutes);
   await app.register(memoryRoutes);
@@ -130,7 +136,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   });
 
   // ---------- Texto ----------
-  app.post('/text', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
+  app.post('/text', { config: rlText, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = textSchema.parse(req.body);
     const release = body.execution === 'async' ? undefined : acquireSynchronousTextSlot();
     if (!release) {
@@ -155,13 +161,13 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   });
 
   // ---------- Chat ----------
-  app.post('/chat', { config: rlConfig, schema: { tags: ['v1'] } }, async (req) => {
+  app.post('/chat', { config: rlText, schema: { tags: ['v1'] } }, async (req) => {
     const body = chatSchema.parse(req.body);
     return execute('chat', body, (p) => p.chat(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
   });
 
   // ---------- Imagem ----------
-  app.post('/image', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
+  app.post('/image', { config: rlImage, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = imageSchema.parse(req.body);
     if (!body.wait) {
       const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -173,7 +179,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, prompt: body.prompt, kind: body.image ? 'image-to-image' : 'text-to-image', seed: body.seed });
   });
 
-  app.post('/image-to-image', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
+  app.post('/image-to-image', { config: rlImage, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
     const raw = imageToImageSchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider };
     if (!body.wait) {
@@ -194,7 +200,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // ---------- Galeria: N imagens de vitrine a partir de 1 foto do produto ----------
   // Sempre assincrono (5 imagens x 30-90s cada facilmente passa de 5-8min,
   // muito acima do limite de ~100s de qualquer proxy na frente da API).
-  app.post('/image-gallery', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
+  app.post('/image-gallery', { config: rlImage, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
     const raw = imageGallerySchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'gallery' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -206,7 +212,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // ---------- Angulo real de camera (Stable Zero123 - novel view synthesis) ----------
   // Sem prompt de texto: o angulo e controlado por elevation/azimuth. Sempre
   // assincrono pelo mesmo motivo da galeria acima.
-  app.post('/image-multiangle', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
+  app.post('/image-multiangle', { config: rlImage, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
     const raw = multiAngleSchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'multiangle' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -215,7 +221,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       });
   });
 
-  app.post('/video-to-image', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
+  app.post('/video-to-image', { config: rlImage, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
     const raw = videoToImageSchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'video-to-image' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -224,7 +230,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       });
   });
 
-  app.post('/video', { config: rlConfig, schema: { tags: ['v1', 'video'] } }, async (req, reply) => {
+  app.post('/video', { config: rlImage, schema: { tags: ['v1', 'video'] } }, async (req, reply) => {
     const raw = videoToImageSchema.parse(req.body);
     const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider, __kind: 'video-to-image' };
     const queued = await enqueueWithTiming('image', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -232,32 +238,32 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
         success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
   });
-  app.post('/remove-background', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req) => {
+  app.post('/remove-background', { config: rlImage, schema: { tags: ['v1', 'image'] } }, async (req) => {
     const raw = removeBackgroundSchema.parse(req.body); const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider };
     const response = await execute('image', body, (p) => (p as unknown as ImageProvider).removeBackground(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, kind: 'remove-background' });
   });
 
-  app.post('/inpaint', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req) => {
+  app.post('/inpaint', { config: rlImage, schema: { tags: ['v1', 'image'] } }, async (req) => {
     const raw = inpaintSchema.parse(req.body); const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider };
     const response = await execute('image', body, (p) => (p as unknown as ImageProvider).inpaint(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, prompt: body.prompt, kind: 'inpaint', seed: body.seed });
   });
 
-  app.post('/outpaint', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req) => {
+  app.post('/outpaint', { config: rlImage, schema: { tags: ['v1', 'image'] } }, async (req) => {
     const raw = outpaintSchema.parse(req.body); const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider };
     const response = await execute('image', body, (p) => (p as unknown as ImageProvider).outpaint(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, prompt: body.prompt, kind: 'outpaint', seed: body.seed });
   });
 
-  app.post('/controlnet', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req) => {
+  app.post('/controlnet', { config: rlImage, schema: { tags: ['v1', 'image'] } }, async (req) => {
     const raw = controlnetSchema.parse(req.body); const body = { ...raw, provider: raw.provider === 'auto' ? undefined : raw.provider };
     const response = await execute('image', body, (p) => (p as unknown as ImageProvider).controlnet(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, prompt: body.prompt, kind: 'controlnet-' + body.controlType, seed: body.seed });
   });
 
   // ---------- Upscale ----------
-  app.post('/upscale', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
+  app.post('/upscale', { config: rlImage, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = upscaleSchema.parse(req.body);
     if (!body.wait) {
       const queued = await enqueueWithTiming('image', { ...body, __kind: 'upscale' }, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -270,23 +276,23 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   });
 
   // ---------- Vision ----------
-  app.post('/vision', { config: rlConfig, schema: { tags: ['v1'] } }, async (req) => {
+  app.post('/vision', { config: rlVision, schema: { tags: ['v1'] } }, async (req) => {
     const body = visionSchema.parse(req.body);
     return execute('vision', body, (p) => p.vision(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
   });
 
   // ---------- Embeddings ----------
-  app.post('/embed', { config: rlConfig, schema: { tags: ['v1'] } }, async (req) => {
+  app.post('/embed', { config: rlEmbed, schema: { tags: ['v1'] } }, async (req) => {
     const body = embedSchema.parse(req.body);
     return execute('embed', body, (p) => p.embed(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
   });
 
-  app.post('/embedding', { config: rlConfig, schema: { tags: ['v1'] } }, async (req) => {
+  app.post('/embedding', { config: rlEmbed, schema: { tags: ['v1'] } }, async (req) => {
     const body = embedSchema.parse(req.body);
     return execute('embed', body, (p) => p.embed(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
   });
   // ---------- OCR ----------
-  app.post('/ocr', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
+  app.post('/ocr', { config: rlText, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = ocrSchema.parse(req.body);
     if (!body.wait) {
       const queued = await enqueueWithTiming('ocr', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
@@ -299,7 +305,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   });
 
   // ---------- Jobs assincronos (SEO, traducao, classificacao...) ----------
-  app.post('/jobs', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
+  app.post('/jobs', { config: rlText, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = jobSchema.parse(req.body);
     const queued = await enqueueWithTiming(resolveJobQueue(body.type, body.payload), { ...body.payload, minQuality: body.payload.minQuality ?? body.minQuality, strictQuality: body.payload.strictQuality ?? body.strictQuality }, {
       tenantId: req.auth?.tenantId,
@@ -345,7 +351,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // WORKER_CONCURRENCY/IMAGE_WORKER_CONCURRENCY) absorve e processa no
   // proprio ritmo sustentavel. A API aceita ate 10 mil, mas grava em blocos
   // pequenos para nao abrir 10 mil operacoes simultaneas em Postgres/Redis.
-  app.post('/jobs/batch', { config: rlConfig, schema: { tags: ['v1'] } }, async (req, reply) => {
+  app.post('/jobs/batch', { config: rlText, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = z.object({ jobs: z.array(jobSchema).min(1).max(env.BATCH_MAX_JOBS) }).parse(req.body);
     const jobIds: string[] = [];
     const rejected: Array<{ index: number; error: string }> = [];
@@ -391,7 +397,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // ---------- Status de varios jobs numa unica chamada ----------
   // Evita ter que fazer 1 GET /jobs/:id por item pra desenhar progresso de
   // um lote grande - manda os ids que importam e recebe o status de todos.
-  app.post('/jobs/status', { config: rlConfig, schema: { tags: ['v1'] } }, async (req) => {
+  app.post('/jobs/status', { config: rlText, schema: { tags: ['v1'] } }, async (req) => {
     const body = z.object({ ids: z.array(z.string().min(1)).min(1).max(env.BATCH_MAX_JOBS) }).parse(req.body);
     const jobs = await prisma.job.findMany({
       where: {
@@ -423,13 +429,13 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     catch { return reply.code(404).send(fail('IMAGE_FILE_NOT_FOUND', 'Arquivo da imagem nao encontrado')); }
   });
 
-  app.post('/history', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req) => {
+  app.post('/history', { config: rlText, schema: { tags: ['v1', 'image'] } }, async (req) => {
     const query = z.object({ limit: z.number().int().min(1).max(200).default(50) }).parse(req.body ?? {});
     const images = await prisma.image.findMany({ where: { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId }, orderBy: { createdAt: 'desc' }, take: query.limit });
     return { success: true, images: images.map((image) => ({ ...image, seed: image.seed?.toString() })) };
   });
 
-  app.post('/workflow', { config: rlConfig, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
+  app.post('/workflow', { config: rlText, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
     if (!registry.has('comfyui')) return reply.code(503).send(fail('COMFYUI_NOT_CONFIGURED', 'ComfyUI nao configurado'));
     const comfy = registry.get('comfyui') as ComfyUIProvider;
     const health = await comfy.health();
@@ -447,9 +453,22 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     return { success: true, provider: 'comfyui', model: result.model, executionTime: Date.now() - started, cached: false, tokens: {}, result: result.result };
   });
 
-  app.post('/audio', { config: rlConfig, schema: { tags: ['v1'] } }, async (_req, reply) =>
-    reply.code(501).send(fail('AUDIO_PROVIDER_NOT_CONFIGURED', 'Nenhum provider de audio foi configurado')),
-  );
+  app.post('/audio', { config: rlAudio, schema: { tags: ['v1'] } }, async (req) => {
+    const body = audioSchema.parse(req.body);
+    return execute('audio', body, (p) => p.audio(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+  });
+
+  app.post('/mission', { config: rlMission, schema: { tags: ['v1'] } }, async (req, reply) => {
+    const body = missionSchema.parse(req.body);
+    if (body.async) {
+      const queued = await enqueueWithTiming('mission', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+      return reply.code(202).send({
+        success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
+      });
+    }
+    // Implementacao sincrona usa o novo Service de Mission
+    return execute('mission', body, (p) => p.mission ? p.mission(body) : (p as any).notSupported('mission'), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+  });
   // ---------- Modelos ----------
   app.get('/models', { schema: { tags: ['v1'] } }, async (req) => {
     const { provider } = req.query as { provider?: string };
@@ -484,7 +503,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   });
 
   // ---------- Fênix / Orchestrator Queue API ----------
-  app.post('/queue/enqueue', { config: rlConfig, schema: { tags: ['v1', 'queue'] } }, async (req, reply) => {
+  app.post('/queue/enqueue', { config: rlText, schema: { tags: ['v1', 'queue'] } }, async (req, reply) => {
     const body = z.object({
       queue: z.enum(['text', 'vision', 'image', 'embedding', 'ocr', 'seo', 'translation', 'classification', 'webhook']),
       payload: z.record(z.any()),

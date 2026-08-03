@@ -181,9 +181,24 @@ export class AIPlatform {
     return this.request<{ success: boolean; providers: unknown[] }>('/v1/providers', 'GET');
   }
 
+  /** Executa qualquer capability de forma dinamica */
+  capability<T = unknown>(name: string, params: Record<string, unknown> & CommonParams) {
+    return this.request<StandardResponse<T>>(`/v1/${name}`, 'POST', params);
+  }
+
+  /** Audio (STT / TTS) */
+  audio(params: { type: 'stt' | 'tts'; data: string; language?: string } & CommonParams) {
+    return this.request<StandardResponse<{ text?: string; audio?: string; language?: string; confidence?: number; metadata?: unknown }>>('/v1/audio', 'POST', params);
+  }
+
+  /** Missao (Agentes autonômos) */
+  mission(params: { objective: string; context?: Record<string, unknown>; async?: boolean; maxSteps?: number } & CommonParams) {
+    return this.request<StandardResponse<unknown> | JobStatus>('/v1/mission', 'POST', params);
+  }
+
   /** Health da plataforma */
   health() {
-    return this.request<{ success: boolean; status: string }>('/v1/health', 'GET');
+    return this.request<{ success: boolean; status: string; providers: Record<string, any>; checks: Record<string, boolean>; uptime: number; timestamp: string }>('/v1/health', 'GET');
   }
 }
 

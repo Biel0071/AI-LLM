@@ -149,6 +149,12 @@ export async function execute<T>(
   const candidates = effectiveRequest.fallback === false
     ? [registry.resolve(capability, effectiveRequest.provider)]
     : registry.resolveCandidates(capability, effectiveRequest.provider, fallbackOrder);
+  
+  for (const candidate of candidates) {
+    try {
+      metrics.providerScore.set({ provider: candidate.name, capability }, registry.calculateScore(candidate, capability));
+    } catch { /* ignore */ }
+  }
   const useCache = ctx.cache !== false && effectiveRequest.cache !== false;
   const { provider: _provider, cache: _cache, wait: _wait, fallback: _fallback, callback: _callback, execution: _execution, ...cacheInput } = effectiveRequest;
   let lastError: unknown;
@@ -272,6 +278,9 @@ export async function execute<T>(
         durationMs,
       });
       logger.warn({ capability, provider: provider.name, circuitOpenUntil: circuit.openUntil || undefined, err }, 'provider failed; trying fallback');
+      if (candidates.length > candidateIndex + 1) {
+        metrics.fallbacks.inc({ capability, primary: candidates[0].name, fallback: candidates[candidateIndex + 1].name });
+      }
     } finally {
       if (useCache && inFlight.get(hash) === providerCall) inFlight.delete(hash);
     }

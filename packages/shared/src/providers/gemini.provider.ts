@@ -22,7 +22,7 @@ export interface GeminiConfig {
 /** Google Gemini via REST (generativelanguage.googleapis.com) */
 export class GeminiProvider extends BaseProvider {
   readonly name = 'gemini';
-  readonly capabilities: Capability[] = ['text', 'chat', 'embed', 'vision'];
+  readonly capabilities: Capability[] = ['chat', 'embedding', 'vision'];
 
   constructor(private readonly config: GeminiConfig) {
     super();
@@ -35,6 +35,7 @@ export class GeminiProvider extends BaseProvider {
   }
 
   private model(model?: string): string {
+
     const m = model ?? this.config.defaultModel ?? 'gemini-2.5-flash';
     return m.replace(/^models\//, '');
   }

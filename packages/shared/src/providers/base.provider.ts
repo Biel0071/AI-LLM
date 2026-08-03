@@ -90,7 +90,9 @@ export abstract class BaseProvider implements AIProvider {
   }
 
   async generateText(_input: GenerateTextInput): Promise<ProviderResult<{ text: string }>> {
-    this.notSupported('text');
+    // Keep generateText for internal use, even though 'text' isn't a capability anymore
+    // (chat takes its place).
+    throw new ProviderError(this.name, 'text generation is not supported natively, use chat', 'NOT_SUPPORTED', 400, false);
   }
   async chat(_input: ChatInput): Promise<ProviderResult<{ message: ChatMessage }>> {
     this.notSupported('chat');
@@ -98,14 +100,14 @@ export abstract class BaseProvider implements AIProvider {
   async generateImage(_input: GenerateImageInput): Promise<ProviderResult<{ images: GeneratedImage[] }>> {
     this.notSupported('image');
   }
-  async upscale(_input: UpscaleInput): Promise<ProviderResult<{ images: GeneratedImage[] }>> {
-    this.notSupported('upscale');
-  }
   async embed(_input: EmbedInput): Promise<ProviderResult<{ embeddings: number[][] }>> {
-    this.notSupported('embed');
+    this.notSupported('embedding');
   }
   async vision(_input: VisionInput): Promise<ProviderResult<{ text: string }>> {
     this.notSupported('vision');
+  }
+  async audio(_input: any): Promise<ProviderResult<{ text?: string; audio?: string; language?: string; confidence?: number; metadata?: unknown }>> {
+    this.notSupported('audio');
   }
 
   async health(): Promise<HealthStatus> {

@@ -216,6 +216,23 @@ export const classificationSchema = z.object({
   ...common,
 });
 
+export const audioSchema = z.object({
+  data: z.string().min(1),
+  type: z.enum(['stt', 'tts']),
+  language: z.string().optional(),
+  stream: z.boolean().optional().default(false),
+  ...common,
+});
+
+export const missionSchema = z.object({
+  objective: z.string().min(1).max(50_000),
+  context: z.string().max(100_000).optional(),
+  tools: z.array(z.string()).optional(),
+  stream: z.boolean().optional().default(false),
+  async: z.boolean().optional().default(true),
+  ...common,
+});
+
 export type TextRequest = z.infer<typeof textSchema>;
 export type ChatRequest = z.infer<typeof chatSchema>;
 export type ImageRequest = z.infer<typeof imageSchema>;
@@ -224,3 +241,5 @@ export type VisionRequest = z.infer<typeof visionSchema>;
 export type EmbedRequest = z.infer<typeof embedSchema>;
 export type OcrRequest = z.infer<typeof ocrSchema>;
 export type JobRequest = z.infer<typeof jobSchema>;
+export type AudioRequest = z.infer<typeof audioSchema>;
+export type MissionRequest = z.infer<typeof missionSchema>;

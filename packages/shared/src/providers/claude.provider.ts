@@ -4,7 +4,6 @@ import {
   Capability,
   ChatInput,
   ChatMessage,
-  EmbedInput,
   GenerateTextInput,
   ModelInfo,
   ProviderError,
@@ -18,97 +17,21 @@ export interface ClaudeConfig {
   defaultModel?: string;
 }
 
-/**
- * Anthropic Claude via SDK oficial (@anthropic-ai/sdk).
- * Modelo padrao: claude-opus-4-8.
- *
- * Nota: nos modelos Opus 4.7+ os parametros de sampling (temperature/top_p)
- * foram removidos da API — por isso este provider nao os repassa.
- */
+/** Anthropic (Messages API) via REST */
 export class ClaudeProvider extends BaseProvider {
-  readonly name = 'claude';
-  readonly capabilities: Capability[] = ['text', 'chat', 'vision'];
-
-  private client: Anthropic;
+  readonly name = 'anthropic';
+  readonly capabilities: Capability[] = ['chat', 'vision'];
 
   constructor(private readonly config: ClaudeConfig) {
     super();
-    this.client = new Anthropic({ apiKey: config.apiKey });
   }
 
-  private model(model?: string): string {
-    return model ?? this.config.defaultModel ?? 'claude-opus-4-8';
-  }
-
-  private toContent(m: ChatMessage): string | Anthropic.ContentBlockParam[] {
-    if (!m.images?.length) return m.content;
-    const blocks: Anthropic.ContentBlockParam[] = m.images.map((img) => {
-      const parsed = parseImageInput(img);
-      if (parsed.kind === 'url') {
-        return { type: 'image', source: { type: 'url', url: parsed.data } };
-      }
-      return {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: parsed.mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
-          data: parsed.data,
-        },
-      };
-    });
-    blocks.push({ type: 'text', text: m.content });
-    return blocks;
-  }
-
-  private async createMessage(
-    messages: ChatMessage[],
-    opts: { model?: string; maxTokens?: number } = {},
-  ): Promise<ProviderResult<{ message: ChatMessage }>> {
-    const model = this.model(opts.model);
-    const system = messages
-      .filter((m) => m.role === 'system')
-      .map((m) => m.content)
-      .join('\n\n');
-    const conversation = messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => ({
-        role: m.role as 'user' | 'assistant',
-        content: this.toContent(m),
-      }));
-
-    let response: Anthropic.Message;
-    try {
-      response = await this.client.messages.create({
-        model,
-        max_tokens: opts.maxTokens ?? 16000,
-        system: system || undefined,
-        messages: conversation,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new ProviderError(this.name, msg, 'UPSTREAM_HTTP_ERROR', 502);
-    }
-
-    if (response.stop_reason === 'refusal') {
-      throw new ProviderError(this.name, 'request refused by safety classifiers', 'REFUSED', 422);
-    }
-
-    const text = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('');
-
-    const tokens: TokenUsage = {
-      prompt: response.usage.input_tokens,
-      completion: response.usage.output_tokens,
-      total: response.usage.input_tokens + response.usage.output_tokens,
-    };
-
+  private mapUsage(usage: any): TokenUsage | undefined {
+    if (!usage) return undefined;
     return {
-      result: { message: { role: 'assistant', content: text } },
-      model: response.model,
-      tokens,
-      raw: { id: response.id, stop_reason: response.stop_reason },
+      prompt: usage.input_tokens,
+      completion: usage.output_tokens,
+      total: (usage.input_tokens || 0) + (usage.output_tokens || 0),
     };
   }
 
@@ -116,32 +39,99 @@ export class ClaudeProvider extends BaseProvider {
     const messages: ChatMessage[] = [];
     if (input.system) messages.push({ role: 'system', content: input.system });
     messages.push({ role: 'user', content: input.prompt });
-    const res = await this.createMessage(messages, input);
+    const res = await this.chat({
+      messages,
+      model: input.model,
+      temperature: input.temperature,
+      maxTokens: input.maxTokens,
+    });
     return { result: { text: res.result.message.content }, model: res.model, tokens: res.tokens, raw: res.raw };
   }
 
   override async chat(input: ChatInput): Promise<ProviderResult<{ message: ChatMessage }>> {
-    return this.createMessage(input.messages, input);
+    const model = input.model ?? this.config.defaultModel ?? 'claude-3-opus-20240229';
+
+    const systemMessages = input.messages.filter((m) => m.role === 'system');
+    const system = systemMessages.length > 0 ? systemMessages.map((m) => m.content).join('\n\n') : undefined;
+
+    const messages = input.messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => {
+        if (!m.images?.length) return { role: m.role, content: m.content };
+        const blocks: any[] = [];
+        if (m.content) blocks.push({ type: 'text', text: m.content });
+        for (const img of m.images) {
+          const parsed = parseImageInput(img);
+          if (parsed.kind === 'url') {
+            throw new ProviderError(
+              this.name,
+              'URL images are not natively supported by Anthropic Messages API without fetching first. Send base64.',
+              'UNSUPPORTED_IMAGE_FORMAT',
+              400,
+            );
+          }
+          let mediaType = parsed.mimeType;
+          if (mediaType === 'image/jpg') mediaType = 'image/jpeg';
+          if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mediaType)) {
+            mediaType = 'image/jpeg';
+          }
+          blocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: mediaType, data: parsed.data },
+          });
+        }
+        return { role: m.role, content: blocks };
+      });
+
+    const body: Record<string, unknown> = {
+      model,
+      messages,
+      max_tokens: input.maxTokens ?? 4096,
+    };
+    if (system) body.system = system;
+    if (input.temperature !== undefined) body.temperature = input.temperature;
+
+    const data = await this.http<any>('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': this.config.apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body,
+    });
+
+    if (data.type === 'error') {
+      throw new ProviderError(this.name, data.error?.message ?? 'API Error', data.error?.type ?? 'API_ERROR');
+    }
+
+    const text = (data.content ?? [])
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text)
+      .join('');
+
+    return {
+      result: { message: { role: 'assistant', content: text } },
+      model,
+      tokens: this.mapUsage(data.usage),
+      raw: data,
+    };
   }
 
   override async vision(input: VisionInput): Promise<ProviderResult<{ text: string }>> {
-    const res = await this.createMessage(
-      [{ role: 'user', content: input.prompt, images: input.images }],
-      { model: input.model, maxTokens: input.maxTokens },
-    );
+    const res = await this.chat({
+      messages: [{ role: 'user', content: input.prompt, images: input.images }],
+      model: input.model,
+      maxTokens: input.maxTokens,
+    });
     return { result: { text: res.result.message.content }, model: res.model, tokens: res.tokens, raw: res.raw };
   }
 
-  override async embed(_input: EmbedInput): Promise<ProviderResult<{ embeddings: number[][] }>> {
-    this.notSupported('embed');
-  }
-
   async models(): Promise<ModelInfo[]> {
-    const page = await this.client.models.list();
-    const models: ModelInfo[] = [];
-    for (const m of page.data) {
-      models.push({ id: m.id, name: m.display_name });
-    }
-    return models;
+    return [
+      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' },
+      { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet' },
+      { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku' },
+      { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet' },
+    ];
   }
 }

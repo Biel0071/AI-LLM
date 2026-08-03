@@ -18,7 +18,7 @@ export interface A1111Config {
 /** Automatic1111 / Stable Diffusion WebUI (endpoints /sdapi/v1/*) */
 export class A1111Provider extends BaseProvider implements ImageProvider {
   readonly name: string;
-  readonly capabilities: Capability[] = ['image', 'upscale'];
+  readonly capabilities: Capability[] = ['image'];
 
   constructor(private readonly config: A1111Config) {
     super();

@@ -19,7 +19,7 @@ export interface ReplicateConfig {
 /** Replicate (api.replicate.com) — texto e imagem via predictions */
 export class ReplicateProvider extends BaseProvider {
   readonly name = 'replicate';
-  readonly capabilities: Capability[] = ['text', 'image'];
+  readonly capabilities: Capability[] = ['chat', 'image'];
 
   private readonly base = 'https://api.replicate.com/v1';
 

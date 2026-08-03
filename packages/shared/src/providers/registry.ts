@@ -7,6 +7,14 @@ import { OllamaProvider } from './ollama.provider';
 import { OpenAICompatibleProvider } from './openai-compatible.provider';
 import { ReplicateProvider } from './replicate.provider';
 import { SDAPIProvider } from './sdapi.provider';
+import { MissionProvider } from './mission.provider';
+
+export interface ProviderScoreContext {
+  availability: number;
+  latency: number;
+  cost: number;
+  quality: number;
+}
 
 export class ProviderRegistry {
   private providers = new Map<string, AIProvider>();
@@ -48,12 +56,25 @@ export class ProviderRegistry {
   }
 
   /**
-   * Resolve o provider para uma capacidade:
-   * provider explicito na requisicao > default configurado > primeiro
-   * provider registrado que suporta a capacidade.
+   * Calcula um Score basico para o provider, permitindo
+   * um roteamento mais inteligente (Availability, Latency, Cost, Quality).
+   * Valores placeholder; devem ser substituídos pelo MetricsRegistry em Prod.
+   */
+  public calculateScore(provider: AIProvider, _capability: Capability): number {
+    let score = 100;
+    // OpenAI tende a ter qualidade maior, mas talvez custo maior.
+    if (provider.name === 'openai') score += 20;
+    if (provider.name === 'anthropic') score += 20;
+    if (provider.name === 'ollama') score += 10; // custo zero, latencia varíavel
+    // Fallback order fallback:
+    return score;
+  }
+
+  /**
+   * Resolve o provider para uma capacidade baseado em SCORE:
+   * provider explicito na requisicao > default configurado > provider com maior SCORE.
    */
   resolve(capability: Capability, requestedProvider?: string): AIProvider {
-    // 'auto' faz parte do contrato publico e significa usar default/fallback.
     if (requestedProvider && requestedProvider.toLowerCase() !== 'auto') {
       const provider = this.get(requestedProvider);
       if (!provider.capabilities.includes(capability)) {
@@ -66,13 +87,16 @@ export class ProviderRegistry {
       }
       return provider;
     }
+    
     const defaultName = this.defaults[capability];
     if (defaultName && this.has(defaultName)) {
       const provider = this.get(defaultName);
       if (provider.capabilities.includes(capability)) return provider;
     }
-    const fallback = this.list().find((p) => p.capabilities.includes(capability));
-    if (!fallback) {
+    
+    // Scored resolution
+    const candidates = this.list().filter((p) => p.capabilities.includes(capability));
+    if (candidates.length === 0) {
       throw new ProviderError(
         'registry',
         `no provider registered for capability "${capability}"`,
@@ -80,7 +104,9 @@ export class ProviderRegistry {
         503,
       );
     }
-    return fallback;
+
+    candidates.sort((a, b) => this.calculateScore(b, capability) - this.calculateScore(a, capability));
+    return candidates[0];
   }
 
   resolveCandidates(
@@ -92,10 +118,13 @@ export class ProviderRegistry {
     const rank = new Map(fallbackOrder.map((name, index) => [name, index]));
     const rest = this.list()
       .filter((p) => p.name !== primary.name && p.capabilities.includes(capability))
-      .sort((a, b) =>
-        (rank.get(a.name) ?? Number.MAX_SAFE_INTEGER) -
-        (rank.get(b.name) ?? Number.MAX_SAFE_INTEGER),
-      );
+      .sort((a, b) => {
+        const rankA = rank.get(a.name) ?? Number.MAX_SAFE_INTEGER;
+        const rankB = rank.get(b.name) ?? Number.MAX_SAFE_INTEGER;
+        if (rankA !== rankB) return rankA - rankB;
+        // Fallback to score
+        return this.calculateScore(b, capability) - this.calculateScore(a, capability);
+      });
     return [primary, ...rest];
   }
 }
@@ -105,6 +134,8 @@ export type Env = Record<string, string | undefined>;
 /** Constroi o registry a partir das variaveis de ambiente. */
 export function createRegistryFromEnv(env: Env): ProviderRegistry {
   const registry = new ProviderRegistry();
+  
+  registry.register(new MissionProvider(registry));
 
   if (env.OLLAMA_BASE_URL) {
     registry.register(
@@ -128,7 +159,7 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
         defaultModel: env.OPENAI_DEFAULT_MODEL ?? 'gpt-4o-mini',
         embedModel: env.OPENAI_EMBED_MODEL ?? 'text-embedding-3-small',
         imageModel: env.OPENAI_IMAGE_MODEL ?? 'dall-e-3',
-        capabilities: ['text', 'chat', 'embed', 'vision', 'image'],
+        capabilities: ['chat', 'embedding', 'vision', 'image', 'audio'],
       }),
     );
   }
@@ -148,7 +179,7 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
     registry.register(
       new ClaudeProvider({
         apiKey: env.ANTHROPIC_API_KEY,
-        defaultModel: env.CLAUDE_DEFAULT_MODEL ?? 'claude-opus-4-8',
+        defaultModel: env.CLAUDE_DEFAULT_MODEL ?? 'claude-3-opus-20240229',
       }),
     );
   }
@@ -160,7 +191,7 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
         baseUrl: env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
         apiKey: env.OPENROUTER_API_KEY,
         defaultModel: env.OPENROUTER_DEFAULT_MODEL,
-        capabilities: ['text', 'chat', 'vision'],
+        capabilities: ['chat', 'vision'],
       }),
     );
   }
@@ -172,10 +203,11 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
         baseUrl: env.HUGGINGFACE_BASE_URL ?? 'https://router.huggingface.co/v1',
         apiKey: env.HUGGINGFACE_API_KEY,
         defaultModel: env.HUGGINGFACE_DEFAULT_MODEL,
-        capabilities: ['text', 'chat'],
+        capabilities: ['chat'],
       }),
     );
   }
+  
   if (env.GROQ_API_KEY) {
     registry.register(
       new OpenAICompatibleProvider({
@@ -183,7 +215,7 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
         baseUrl: env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1',
         apiKey: env.GROQ_API_KEY,
         defaultModel: env.GROQ_DEFAULT_MODEL ?? 'llama-3.1-8b-instant',
-        capabilities: ['text', 'chat'],
+        capabilities: ['chat'],
       }),
     );
   }
@@ -198,8 +230,8 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
         defaultModel: env.CLOUDFLARE_DEFAULT_MODEL ?? '@cf/meta/llama-3.1-8b-instruct-fp8-fast',
         embedModel: env.CLOUDFLARE_EMBED_MODEL,
         capabilities: env.CLOUDFLARE_EMBED_MODEL
-          ? ['text', 'chat', 'embed', 'vision']
-          : ['text', 'chat', 'vision'],
+          ? ['chat', 'embedding', 'vision']
+          : ['chat', 'vision'],
       }),
     );
   }
@@ -210,7 +242,7 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
         name: 'lmstudio',
         baseUrl: env.LMSTUDIO_BASE_URL,
         defaultModel: env.LMSTUDIO_DEFAULT_MODEL,
-        capabilities: ['text', 'chat', 'embed', 'vision'],
+        capabilities: ['chat', 'embedding', 'vision'],
       }),
     );
   }
@@ -259,18 +291,18 @@ export function createRegistryFromEnv(env: Env): ProviderRegistry {
       new ReplicateProvider({
         apiToken: env.REPLICATE_API_TOKEN,
         imageModel: env.REPLICATE_IMAGE_MODEL,
-        textModel: env.REPLICATE_TEXT_MODEL,
+        textModel: env.REPLICATE_TEXT_MODEL, // used for chat in replicate probably
       }),
     );
   }
 
   const defaults: Array<[Capability, string | undefined]> = [
-    ['text', env.DEFAULT_TEXT_PROVIDER],
     ['chat', env.DEFAULT_CHAT_PROVIDER],
     ['image', env.DEFAULT_IMAGE_PROVIDER],
-    ['embed', env.DEFAULT_EMBED_PROVIDER],
+    ['embedding', env.DEFAULT_EMBED_PROVIDER],
     ['vision', env.DEFAULT_VISION_PROVIDER],
-    ['upscale', env.DEFAULT_UPSCALE_PROVIDER],
+    ['audio', env.DEFAULT_AUDIO_PROVIDER],
+    ['mission', env.DEFAULT_MISSION_PROVIDER],
   ];
   for (const [capability, name] of defaults) {
     if (name) registry.setDefault(capability, name);

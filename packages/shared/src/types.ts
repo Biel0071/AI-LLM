@@ -1,4 +1,24 @@
-export type Capability = 'text' | 'chat' | 'image' | 'upscale' | 'embed' | 'vision';
+export type Capability = 'chat' | 'vision' | 'image' | 'embedding' | 'audio' | 'mission';
+
+export interface CapabilityDefinition {
+  id: Capability;
+  version: string;
+  providerTypes: string[];
+  requiredTools?: string[];
+  supportsStreaming: boolean;
+  supportsAsync: boolean;
+  supportsRetry: boolean;
+  supportsFallback: boolean;
+}
+
+export const CapabilityRegistry: Record<Capability, CapabilityDefinition> = {
+  chat: { id: 'chat', version: '1.0', providerTypes: ['llm'], supportsStreaming: true, supportsAsync: false, supportsRetry: true, supportsFallback: true },
+  vision: { id: 'vision', version: '1.0', providerTypes: ['vlm'], supportsStreaming: true, supportsAsync: false, supportsRetry: true, supportsFallback: true },
+  image: { id: 'image', version: '1.0', providerTypes: ['diffusion'], supportsStreaming: false, supportsAsync: true, supportsRetry: true, supportsFallback: true },
+  embedding: { id: 'embedding', version: '1.0', providerTypes: ['embedding'], supportsStreaming: false, supportsAsync: false, supportsRetry: true, supportsFallback: true },
+  audio: { id: 'audio', version: '1.0', providerTypes: ['audio'], supportsStreaming: true, supportsAsync: false, supportsRetry: true, supportsFallback: true },
+  mission: { id: 'mission', version: '1.0', providerTypes: ['llm'], requiredTools: ['planner', 'memory'], supportsStreaming: true, supportsAsync: true, supportsRetry: true, supportsFallback: true },
+};
 
 export interface TokenUsage {
   prompt?: number;
@@ -29,6 +49,7 @@ export interface ChatInput {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  stream?: boolean;
 }
 
 export interface GenerateImageInput {
@@ -66,6 +87,25 @@ export interface VisionInput {
   images: string[];
   model?: string;
   maxTokens?: number;
+  stream?: boolean;
+}
+
+export interface AudioInput {
+  /** Base64 (com ou sem prefixo data:) ou URL do audio para STT, ou texto para TTS */
+  data: string;
+  type: 'stt' | 'tts';
+  model?: string;
+  language?: string;
+  stream?: boolean;
+}
+
+export interface MissionInput {
+  objective: string;
+  context?: string;
+  tools?: string[];
+  model?: string;
+  stream?: boolean;
+  async?: boolean;
 }
 
 export interface GeneratedImage {
@@ -90,6 +130,14 @@ export interface ModelInfo {
   contextWindow?: number;
 }
 
+export interface ProviderHealth {
+  online: boolean;
+  latency?: number;
+  models?: string[];
+  requests?: number;
+  errors?: number;
+}
+
 export interface HealthStatus {
   ok: boolean;
   latencyMs?: number;
@@ -103,9 +151,10 @@ export interface AIProvider {
   generateText(input: GenerateTextInput): Promise<ProviderResult<{ text: string }>>;
   chat(input: ChatInput): Promise<ProviderResult<{ message: ChatMessage }>>;
   generateImage(input: GenerateImageInput): Promise<ProviderResult<{ images: GeneratedImage[] }>>;
-  upscale(input: UpscaleInput): Promise<ProviderResult<{ images: GeneratedImage[] }>>;
   embed(input: EmbedInput): Promise<ProviderResult<{ embeddings: number[][] }>>;
   vision(input: VisionInput): Promise<ProviderResult<{ text: string }>>;
+  audio(input: AudioInput): Promise<ProviderResult<{ text?: string; audio?: string; language?: string; confidence?: number; metadata?: unknown }>>;
+  mission?(input: MissionInput): Promise<ProviderResult<unknown>>;
   health(): Promise<HealthStatus>;
   models(): Promise<ModelInfo[]>;
 }
@@ -133,6 +182,9 @@ export interface StandardError {
   error: {
     code: string;
     message: string;
+    retryable: boolean;
+    provider?: string;
+    traceId?: string;
     details?: unknown;
   };
 }
@@ -143,6 +195,8 @@ export class ProviderError extends Error {
     message: string,
     public readonly code: string = 'PROVIDER_ERROR',
     public readonly statusCode: number = 502,
+    public readonly retryable: boolean = true,
+    public readonly traceId?: string
   ) {
     super(`[${provider}] ${message}`);
     this.name = 'ProviderError';
@@ -151,7 +205,7 @@ export class ProviderError extends Error {
 
 export class CapabilityNotSupportedError extends ProviderError {
   constructor(provider: string, capability: Capability) {
-    super(provider, `capability "${capability}" is not supported`, 'CAPABILITY_NOT_SUPPORTED', 400);
+    super(provider, `capability "${capability}" is not supported`, 'CAPABILITY_NOT_SUPPORTED', 400, false);
     this.name = 'CapabilityNotSupportedError';
   }
 }
