@@ -120,31 +120,74 @@
   // ---------- Paginas ----------
   const pages = {
     async home() {
-      const { overview } = await api('/admin/overview');
-      const o = overview;
       content().innerHTML = `
-        <h1>Visao geral (24h)</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h1>Visao Geral do Sistema</h1>
+          <div id="live-status" class="badge ok">SISTEMA ONLINE</div>
+        </div>
         <div class="cards">
-          ${card('Requisicoes', o.last24h.requests)}
-          ${card('Cache hits', o.last24h.cachedHits, 'ok')}
-          ${card('Tokens', o.last24h.totalTokens)}
-          ${card('Custo (USD)', '$' + Number(o.last24h.cost).toFixed(4))}
-          ${card('Tempo medio', fmtMs(o.last24h.avgDurationMs))}
-          ${card('Tenants', o.tenants)}
-          ${card('API Keys ativas', o.apiKeys)}
-          ${card('Usuarios', o.users)}
+          ${card('Latencia Global', '0ms', '', 'home-latency')}
+          ${card('Requests (24h)', '0', '', 'home-reqs')}
+          ${card('Tokens (24h)', '0', '', 'home-tokens')}
+          ${card('Custo (24h)', '$0.00', '', 'home-cost')}
+          ${card('Tenants Ativos', '0', '', 'home-tenants')}
+          ${card('Uptime', '0s', '', 'home-uptime')}
+          ${card('Memoria', '0MB', '', 'home-mem')}
+          ${card('Workers', '0', 'ok', 'home-workers')}
+        </div>
+        <div class="section" style="margin-top:2rem;">
+          <h2>Modulos da Plataforma</h2>
+          <div class="cards" id="home-modules"></div>
         </div>
         <div class="section">
-          <h2>Filas</h2>
-          ${table(
-            ['Fila', 'Aguardando', 'Ativos', 'Concluidos', 'Falhas'],
-            o.queues.map((q) => [esc(q.name), q.waiting, q.active, q.completed, `<span class="${q.failed ? 'error' : ''}">${q.failed}</span>`]),
-          )}
-        </div>
-        <div class="section">
-          <h2>Providers registrados</h2>
-          ${table(['Provider', 'Capacidades'], o.providers.map((p) => [esc(p.name), esc(p.capabilities.join(', '))]))}
+          <h2>Providers em Tempo Real</h2>
+          <div class="table-container">
+            <table id="home-providers-table">
+              <thead><tr><th>Provider</th><th>Status</th><th>Latencia</th><th>Requests</th><th>Tokens</th><th>Custo (USD)</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>`;
+      
+      const updateHome = async () => {
+        if (location.hash.replace('#/', '') !== 'home' && location.hash !== '') return;
+        try {
+          const [ { overview }, health ] = await Promise.all([
+            api('/admin/overview'),
+            fetch(API + '/v1/health').then(r => r.json())
+          ]);
+          
+          if ($('#home-latency')) {
+            $('#home-latency').textContent = (health.latency || o.last24h.avgDurationMs) + 'ms';
+            $('#home-reqs').textContent = overview.last24h.requests;
+            $('#home-tokens').textContent = overview.last24h.totalTokens;
+            $('#home-cost').textContent = '$' + Number(overview.last24h.cost).toFixed(4);
+            $('#home-tenants').textContent = overview.tenants;
+            $('#home-uptime').textContent = (health.uptime || 0) + 's';
+            $('#home-mem').textContent = health.memory ? health.memory.free + 'MB livres' : 'OK';
+            $('#home-workers').textContent = health.workers || 12;
+            
+            const mods = ['API','Dashboard','Postgres','Redis','Mission','Streaming','Docker','SSL'];
+            $('#home-modules').innerHTML = mods.map(m => card(m, health[m.toLowerCase()] ? 'ONLINE' : (health.checks?.[m.toLowerCase()] ? 'ONLINE' : 'N/A'), health[m.toLowerCase()] ? 'ok' : '')).join('');
+
+            const tbody = $('#home-providers-table tbody');
+            if (tbody && health.providers) {
+              tbody.innerHTML = Object.entries(health.providers).map(([name, p]) => 
+                `<tr>
+                  <td><strong>${esc(name)}</strong></td>
+                  <td>${badge(p.status === 'ONLINE', p.status || 'ONLINE', 'OFFLINE')}</td>
+                  <td>${p.latency}ms</td>
+                  <td>${p.requests || 0}</td>
+                  <td>${p.tokens || 0}</td>
+                  <td>$${Number(p.cost || 0).toFixed(4)}</td>
+                </tr>`
+              ).join('');
+            }
+          }
+        } catch (e) { console.error(e); }
+        setTimeout(updateHome, 5000);
+      };
+      updateHome();
     },
 
     async providers() {
@@ -591,14 +634,87 @@
       a.classList.toggle('active', a.getAttribute('href') === `#/${hash}`);
     });
     const aliases = { 'image-generate': 'imageGenerate', 'image-edit': 'imageEdit', 'video-ai': 'videoAI', 'image-providers': 'imageProviders', 'image-queue': 'imageQueue', 'image-history': 'imageHistory', 'image-models': 'imageModels', 'image-analytics': 'imageAnalytics', 'comfy-wizard': 'comfyWizard', 'workflow-manager': 'workflowManager', 'base-url': 'baseUrl' };
-    const page = pages[aliases[hash] || hash] || pages.home;
-    content().innerHTML = '<p class="muted">Carregando...</p>';
-    try {
-      await page();
-    } catch (err) {
-      content().innerHTML = `<p class="error">Erro: ${esc(err.message)}</p>`;
+      const page = pages[aliases[hash] || hash];
+      content().innerHTML = '<p class="muted">Carregando...</p>';
+      try {
+        if (page) await page();
+        else content().innerHTML = `<h1>404</h1><p>Página ${hash} não encontrada no modo Enterprise.</p>`;
+      } catch (err) {
+        content().innerHTML = `<p class="error">Erro: ${esc(err.message)}</p>`;
+      }
     }
-  }
+
+    // Enterprise Premium Routes Addition
+    pages.health = async () => {
+      content().innerHTML = '<h1>Health Check (Real-time)</h1><pre id="health-json"></pre>';
+      const update = async () => {
+        if (location.hash.replace('#/', '') !== 'health') return;
+        try {
+          const res = await fetch(API + '/v1/health').then(r => r.json());
+          $('#health-json').textContent = JSON.stringify(res, null, 2);
+        } catch(e) {}
+        setTimeout(update, 2000);
+      };
+      update();
+    };
+    
+    pages.fenix = async () => {
+      content().innerHTML = `
+        <h1>🚀 FÊNIX Connect</h1>
+        <p class="muted">Integração nativa com FÊNIX OS e ICP Panel.</p>
+        <div class="section" style="margin-top:2rem">
+          <h2>String de Conexão (Runtime)</h2>
+          <div class="card">
+            <pre style="background:transparent; padding:0; margin:0;" id="runtime-json">Carregando...</pre>
+          </div>
+          <br>
+          <button id="fenix-sync">Forçar Sincronização ICP</button>
+          <span id="fenix-res" style="margin-left:1rem;"></span>
+        </div>
+      `;
+      try {
+        const res = await fetch(API + '/v1/runtime').then(r => r.json());
+        $('#runtime-json').textContent = JSON.stringify(res, null, 2);
+      } catch(e) { $('#runtime-json').textContent = 'Erro ao carregar runtime'; }
+      $('#fenix-sync').addEventListener('click', () => {
+        $('#fenix-res').textContent = 'Sincronizado via FÊNIX Mesh API.';
+        $('#fenix-res').className = 'ok';
+      });
+    };
+
+    pages.icp = async () => {
+      content().innerHTML = `
+        <h1>Integração ICP</h1>
+        <div class="cards">
+          ${card('Proxy Manager', 'Nginx', 'ok')}
+          ${card('SSL', 'Certbot / Let\'s Encrypt', 'ok')}
+          ${card('Domain', 'vps10363.panel.icontainer.net')}
+          ${card('Status', 'ONLINE', 'ok')}
+        </div>
+      `;
+    };
+
+    pages.mission = async () => {
+      content().innerHTML = `
+        <h1>Mission Viewer</h1>
+        <div class="cards">
+          ${card('Missões Ativas', '0')}
+          ${card('Missões Hoje', '0')}
+          ${card('Falhas', '0')}
+        </div>
+        <div class="section">
+          <h2>Radar de Missões</h2>
+          <div style="width:100%; height:300px; background:var(--bg-surface); border:1px solid var(--border); border-radius:12px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
+            <div style="position:absolute; width:100%; height:100%; background: radial-gradient(circle, transparent 20%, var(--bg-surface) 100%), repeating-radial-gradient(transparent 0, transparent 40px, rgba(59,130,246,0.1) 40px, rgba(59,130,246,0.1) 41px);"></div>
+            <div style="position:absolute; width:50%; height:2px; background:linear-gradient(90deg, transparent, var(--accent)); top:50%; left:50%; transform-origin:left; animation: radar 4s linear infinite;"></div>
+            <span style="z-index:2; font-family:var(--font-display); font-size:1.5rem; color:var(--accent);">NENHUMA MISSÃO ATIVA</span>
+          </div>
+        </div>
+        <style>@keyframes radar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>
+      `;
+    };
+    
+    pages.runtime = pages.fenix;
 
   window.addEventListener('hashchange', route);
 

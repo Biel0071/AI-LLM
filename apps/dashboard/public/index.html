@@ -29,12 +29,34 @@
     <aside class="sidebar">
       <h2>AI Platform</h2>
       <nav class="nav-groups">
-        <a class="nav-primary" href="#/home"><span>▦</span> Dashboard</a>
-        <section class="nav-group" data-group="projects"><button class="nav-group-toggle"><span>◫ Projetos</span><b>⌄</b></button><div class="nav-submenu"><a href="#/projects">Projetos</a><a href="#/keys">API Keys</a><a href="#/workflow-manager">Workflows</a><a href="#/image-history">Histórico</a></div></section>
-        <section class="nav-group" data-group="ai"><button class="nav-group-toggle"><span>✦ IA</span><b>⌄</b></button><div class="nav-submenu"><a href="#/providers">Providers</a><a href="#/ollama">Ollama</a><a href="#/comfy-wizard">ComfyUI</a><a href="#/models">Modelos</a><a href="#/prompts">Prompts</a></div></section>
-        <section class="nav-group" data-group="gateway"><button class="nav-group-toggle"><span>⇄ API Gateway</span><b>⌄</b></button><div class="nav-submenu"><a href="#/base-url">Base URL</a><a href="#/sdk">SDK</a><a href="#/lovable">Integração Lovable</a><a href="#/integrations">Exemplos</a></div></section>
+        <a class="nav-primary" href="#/home"><span>▦</span> Overview</a>
+        <a class="nav-primary" href="#/projects"><span>◫</span> Projects</a>
+        <a class="nav-primary" href="#/providers"><span>✦</span> Providers</a>
+        <a class="nav-primary" href="#/keys"><span>🔑</span> API Keys</a>
+        <a class="nav-primary" href="#/playground"><span>⚡</span> Playground</a>
+        <a class="nav-primary" href="#/mission"><span>🎯</span> Mission Viewer</a>
         <a class="nav-primary" href="#/logs"><span>≡</span> Logs</a>
-        <section class="nav-group" data-group="system"><button class="nav-group-toggle"><span>⚙ Sistema</span><b>⌄</b></button><div class="nav-submenu"><a href="#/users">Usuários</a><a href="#/security">Segurança</a><a href="#/settings">Configurações</a><a href="#/backup">Backup</a></div></section>
+        
+        <section class="nav-group" data-group="system">
+          <button class="nav-group-toggle"><span>⚙ System Status</span><b>⌄</b></button>
+          <div class="nav-submenu">
+            <a href="#/health">Health Check</a>
+            <a href="#/metrics">Prometheus Metrics</a>
+            <a href="#/icp">ICP Integration</a>
+            <a href="#/runtime">Runtime Config</a>
+          </div>
+        </section>
+        
+        <section class="nav-group" data-group="admin">
+          <button class="nav-group-toggle"><span>🛡️ Admin</span><b>⌄</b></button>
+          <div class="nav-submenu">
+            <a href="#/tenants">Tenants</a>
+            <a href="#/users">Users</a>
+            <a href="#/settings">Settings</a>
+          </div>
+        </section>
+
+        <a class="nav-primary fenix-btn" href="#/fenix" style="margin-top:20px; background: rgba(59,130,246,0.1); border-left: 3px solid #3b82f6;"><span>🚀</span> FÊNIX Connect</a>
       </nav>
       <button id="logout" class="ghost">Sair</button>
     </aside>

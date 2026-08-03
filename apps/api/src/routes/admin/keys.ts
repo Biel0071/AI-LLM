@@ -47,4 +47,32 @@ export async function keysRoutes(secured: FastifyInstance): Promise<void> {
     await redis.del(`aiplatform:apikey:v2:${revoked.keyHash}`, `aiplatform:apikey:${revoked.keyHash}`);
     return { success: true };
   });
+
+  secured.post('/api-keys/:id/rotate', { schema: { tags: ['admin'] } }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const oldKey = await prisma.apiKey.findUnique({ where: { id } });
+    if (!oldKey) return reply.code(404).send(fail('NOT_FOUND', 'Key not found'));
+    
+    // Revoke old key
+    await prisma.apiKey.update({ where: { id }, data: { active: false } });
+    await redis.del(`aiplatform:apikey:v2:${oldKey.keyHash}`, `aiplatform:apikey:${oldKey.keyHash}`);
+
+    // Create new key with same properties
+    const key = `ap_${oldKey.environment}_${randomBytes(24).toString('hex')}`;
+    const newApiKey = await prisma.apiKey.create({
+      data: {
+        name: oldKey.name + ' (Rotated)',
+        tenantId: oldKey.tenantId,
+        projectId: oldKey.projectId,
+        environment: oldKey.environment,
+        scopes: oldKey.scopes,
+        expiresAt: oldKey.expiresAt,
+        keyHash: hashApiKey(key),
+        prefix: key.slice(0, 14),
+      }
+    });
+
+    return { success: true, id: newApiKey.id, key };
+  });
 }
+
