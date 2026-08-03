@@ -100,7 +100,7 @@ export class ReplicateProvider extends BaseProvider {
 
   async models(): Promise<ModelInfo[]> {
     const models: ModelInfo[] = [];
-    if (this.config.textModel) models.push({ id: this.config.textModel, capabilities: ['text'] });
+    if (this.config.textModel) models.push({ id: this.config.textModel, capabilities: ['chat'] });
     if (this.config.imageModel) models.push({ id: this.config.imageModel, capabilities: ['image'] });
     return models;
   }

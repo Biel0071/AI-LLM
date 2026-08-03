@@ -72,7 +72,7 @@ class ExecutionEngine {
 class Planner {
   constructor(private registry: ProviderRegistry) {}
   async createPlan(mission: MissionInput, ctx: any): Promise<string[]> {
-    const provider = this.registry.resolve('text', mission.model ? undefined : 'auto'); // Auto-resolve LLM
+    const provider = this.registry.resolve('chat', mission.model ? undefined : 'auto'); // Auto-resolve LLM
     const prompt = `Crie um plano passo a passo para atingir este objetivo: ${mission.objective}`;
     const res = await provider.generateText({ prompt, model: mission.model });
     
@@ -100,7 +100,7 @@ export class MissionProvider extends BaseProvider {
     this.planner = new Planner(registry);
   }
 
-  override async mission(input: MissionInput): Promise<ProviderResult<any>> {
+  async mission(input: MissionInput): Promise<ProviderResult<any>> {
     const plan = await this.planner.createPlan(input, {});
     const steps = await this.engine.executePlan(plan, {});
     const finalResult = steps.map((s) => s.result).join('\n');

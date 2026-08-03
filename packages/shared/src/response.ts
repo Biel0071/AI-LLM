@@ -20,5 +20,5 @@ export function ok<T>(params: {
 }
 
 export function fail(code: string, message: string, details?: unknown): StandardError {
-  return { success: false, error: { code, message, details } };
+  return { success: false, error: { code, message, details, retryable: false } };
 }

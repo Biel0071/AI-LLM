@@ -51,7 +51,7 @@ export function pickModel(
   if (capability === 'vision' || task === 'vision' || task === 'ocr') {
     return env.OLLAMA_VISION_MODEL || env.OLLAMA_DEFAULT_MODEL;
   }
-  if (capability === 'embed' || task === 'embed') {
+  if (capability === 'embedding' || task === 'embed') {
     return env.OLLAMA_EMBED_MODEL || env.OLLAMA_DEFAULT_MODEL;
   }
   if (task && QUALITY_TASKS.has(task)) {

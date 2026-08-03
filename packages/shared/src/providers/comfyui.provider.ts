@@ -436,7 +436,7 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
     return { result: { images }, model: checkpoint, raw: {} };
   }
 
-  override async upscale(input: UpscaleInput): Promise<ProviderResult<{ images: GeneratedImage[] }>> {
+  async upscale(input: UpscaleInput): Promise<ProviderResult<{ images: GeneratedImage[] }>> {
     const model = input.model ?? this.config.upscaleModel ?? 'RealESRGAN_x4plus.pth';
     const uploaded = await this.uploadImage(input.image);
     const images = await this.submitAndWait(this.buildUpscale(uploaded, model));

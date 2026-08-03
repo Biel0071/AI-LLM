@@ -76,7 +76,7 @@ export class A1111Provider extends BaseProvider implements ImageProvider {
     return { result: { images }, model: input.model ?? this.config.defaultModel ?? 'default', raw: { info: data?.info } };
   }
 
-  override async upscale(input: UpscaleInput): Promise<ProviderResult<{ images: GeneratedImage[] }>> {
+  async upscale(input: UpscaleInput): Promise<ProviderResult<{ images: GeneratedImage[] }>> {
     const data = await this.http<any>(this.url('/sdapi/v1/extra-single-image'), {
       method: 'POST',
       body: {
