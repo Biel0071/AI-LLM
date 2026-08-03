@@ -119,10 +119,10 @@ services:
     depends_on:
       - api
     ports:
-      # Dashboard interno por padrao; exponha via proxy TLS, nao direto.
-      - '${DASHBOARD_BIND_HOST:-127.0.0.1}:8080:80'
+      # Expose on port 80 so Nginx can proxy traffic to API
+      - '${DASHBOARD_BIND_HOST:-0.0.0.0}:80:80'
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1/healthz | grep -q ok']
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1/health | grep -q status']
       interval: 10s
       timeout: 5s
       retries: 5
