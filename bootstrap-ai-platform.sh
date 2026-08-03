@@ -96,91 +96,29 @@ docker compose build
 docker compose up -d
 
 # ==========================================
-# FASE 2 & 3 — HOST SAFETY E ICP INTEGRATION
+# FASE 2 & 3 — HOST SAFETY E FIREWALL
 # ==========================================
-echo "[FASE 2 & 3] Configurando Integração ICP (Nginx Reverse Proxy)..."
+echo "[FASE 2 & 3] Limpando proxies conflitantes e liberando portas..."
 
-cat <<EOF > "$NGINX_CONF"
-# API Platform
-server {
-    listen 80;
-    server_name api.$DOMAIN;
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
+# Remove o Nginx conf antigo que pode ter sequestrado o domínio do ICP
+if [ -f "/etc/nginx/conf.d/ai-platform.conf" ]; then
+    echo "🧹 Removendo proxy reverso que conflita com o ICP..."
+    rm -f "/etc/nginx/conf.d/ai-platform.conf"
+    systemctl reload nginx || true
+fi
 
-# Dashboard
-server {
-    listen 80;
-    server_name dashboard.$DOMAIN;
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-    }
-}
-
-# Docs (Swagger)
-server {
-    listen 80;
-    server_name docs.$DOMAIN;
-    location / {
-        proxy_pass http://127.0.0.1:3000/docs;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-    }
-}
-
-# Health
-server {
-    listen 80;
-    server_name health.$DOMAIN;
-    location / {
-        proxy_pass http://127.0.0.1:3000/v1/health;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-    }
-}
-
-# Metrics (Prometheus)
-server {
-    listen 80;
-    server_name metrics.$DOMAIN;
-    location / {
-        proxy_pass http://127.0.0.1:9090;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-    }
-}
-EOF
-
-echo "🔍 Validando configuração do Nginx..."
-if nginx -t; then
-    echo "✅ Nginx validado com sucesso. Recarregando..."
-    systemctl reload nginx
+# Libera a porta 3000 no firewall para acesso direto
+echo "🔓 Liberando porta 3000 no Firewall..."
+if command -v ufw >/dev/null 2>&1; then
+    ufw allow 3000/tcp
 else
-    echo "❌ Erro na validação do Nginx. Revertendo configuração..."
-    rm -f "$NGINX_CONF"
-    systemctl reload nginx
+    iptables -A INPUT -p tcp --dport 3000 -j ACCEPT || true
 fi
 
 # ==========================================
-# FASE 4 — SSL
+# FASE 4 — SSL (Ignorado para acesso via IP Direto)
 # ==========================================
-echo "[FASE 4] Verificando SSL..."
-for sub in api dashboard docs health metrics; do
-    if certbot certificates | grep -q "$sub.$DOMAIN"; then
-        echo "✅ Certificado SSL já existe para $sub.$DOMAIN. Reutilizando."
-    else
-        echo "🔐 Emitindo certificado SSL para $sub.$DOMAIN..."
-        certbot --nginx -d "$sub.$DOMAIN" --non-interactive --agree-tos -m admin@$DOMAIN || echo "⚠️ Falha ao emitir SSL para $sub (talvez o DNS ainda não propagou)."
-    fi
-done
+echo "[FASE 4] SSL via Nginx ignorado (Priorizando Acesso Direto por IP)..."
 
 # ==========================================
 # FASE 17 — MISSION ZERO (Health, Tests, Auth)
