@@ -20,8 +20,8 @@ describe('ProviderRegistry', () => {
       OPENAI_API_KEY: 'sk-test',
       DEFAULT_TEXT_PROVIDER: 'openai',
     });
-    expect(registry.resolve('text').name).toBe('openai');
-    expect(registry.resolve('text', 'ollama').name).toBe('ollama');
+    expect(registry.resolve('chat').name).toBe('openai');
+    expect(registry.resolve('chat', 'ollama').name).toBe('ollama');
   });
 
   it('trata provider auto como roteamento automatico', () => {
@@ -29,7 +29,7 @@ describe('ProviderRegistry', () => {
       OLLAMA_BASE_URL: 'http://localhost:11434',
       COMFYUI_BASE_URL: 'http://localhost:8188',
     });
-    expect(registry.resolve('text', 'auto').name).toBe('ollama');
+    expect(registry.resolve('chat', 'auto').name).toBe('ollama');
     expect(registry.resolve('image', 'AUTO').name).toBe('comfyui');
   });
 
