@@ -50,7 +50,7 @@ function enforceSynchronousQuality<T>(
   capability: Capability,
   request: Record<string, unknown>,
 ): StandardResponse<T> {
-  if (capability === 'embed') return response;
+  if (capability === 'embedding') return response;
   const threshold = Math.max(0, Math.min(100, Number(request.minQuality ?? process.env.MIN_OUTPUT_QUALITY ?? 90)));
   const result = response.result as any;
   const text = typeof result === 'string' ? result
@@ -111,9 +111,9 @@ export async function execute<T>(
         throw new ProviderError('gateway', 'monthly token limit reached', 'MONTHLY_TOKEN_LIMIT', 429);
       }
     }
-    const tenantProvider = capability === 'image' || capability === 'upscale'
+    const tenantProvider = capability === 'image'
       ? tenant.defaultImageProvider
-      : capability === 'text' || capability === 'chat'
+      : capability === 'chat'
         ? tenant.defaultTextProvider
         : undefined;
     effectiveRequest = {

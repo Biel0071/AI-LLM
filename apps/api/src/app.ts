@@ -14,6 +14,7 @@ import { registryProm } from './metrics';
 import { registry } from './services/ai.service';
 import { v1Routes } from './routes/v1';
 import { adminRoutes } from './routes/admin';
+import { queueStats } from './services/queue.service';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app: FastifyInstance = Fastify({
@@ -95,8 +96,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     
     // Worker / Queue Metrics
     try {
-      const qDepth = await queue.getWaitingCount();
-      const activeCount = await queue.getActiveCount();
+      const stats = await queueStats();
+      const qDepth = stats.reduce((acc, q) => acc + q.waiting, 0);
+      const activeCount = stats.reduce((acc, q) => acc + q.active, 0);
       checks.queue = { waiting: qDepth, active: activeCount };
       checks.workers = activeCount > 0 ? activeCount : 12; // Provide baseline for UI demo if idle
     } catch {

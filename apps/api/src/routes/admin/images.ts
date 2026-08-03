@@ -39,7 +39,7 @@ export async function imagesRoutes(secured: FastifyInstance): Promise<void> {
       response = await execute('image', { ...body, provider }, (p) => (p as unknown as ImageProvider).removeBackground({ image: body.image!, provider, model: body.model }), { cache: false });
     } else if (body.operation === 'upscale') {
       if (!body.image) return reply.code(400).send(fail('IMAGE_REQUIRED','Envie uma imagem'));
-      response = await execute('upscale', { ...body, provider }, (p) => p.upscale({ image: body.image!, scale: body.scale, model: body.model }), { cache: false });
+      response = await execute('image', { ...body, provider }, (p) => (p as any).upscale({ image: body.image!, scale: body.scale, model: body.model }), { cache: false });
     } else if (body.operation === 'image-to-image') {
       response = await execute('image', { ...body, prompt, provider }, (p) => (p as unknown as ImageProvider).imageToImage({ ...body, image: body.image!, prompt, provider }), { cache: true });
     } else {

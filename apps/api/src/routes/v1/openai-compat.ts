@@ -98,7 +98,7 @@ export async function registerOpenAICompatRoutes(fastify: FastifyInstance) {
 
     try {
       const embedRes = await execute(
-        'embed',
+        'embedding',
         { input, model },
         (p) => p.embed({ input: textInput, model }),
         { tenantId, projectId }

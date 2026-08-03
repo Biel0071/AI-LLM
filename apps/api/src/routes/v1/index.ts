@@ -171,7 +171,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       });
     }
     try {
-      return await execute('text', body, (p) => p.generateText(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+      return await execute('chat', body, (p) => p.generateText(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     } finally {
       release();
     }
@@ -288,7 +288,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
         success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
     }
-    const response = await execute('upscale', body, (p) => p.upscale(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    const response = await execute('image', body, (p) => (p as any).upscale(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, kind: 'upscale' });
   });
 
@@ -301,12 +301,12 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // ---------- Embeddings ----------
   app.post('/embed', { config: rlEmbed, schema: { tags: ['v1'] } }, async (req) => {
     const body = embedSchema.parse(req.body);
-    return execute('embed', body, (p) => p.embed(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    return execute('embedding', body, (p) => p.embed(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
   });
 
   app.post('/embedding', { config: rlEmbed, schema: { tags: ['v1'] } }, async (req) => {
     const body = embedSchema.parse(req.body);
-    return execute('embed', body, (p) => p.embed(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    return execute('embedding', body, (p) => p.embed(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
   });
   // ---------- OCR ----------
   app.post('/ocr', { config: rlText, schema: { tags: ['v1'] } }, async (req, reply) => {
@@ -478,7 +478,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   app.post('/mission', { config: rlMission, schema: { tags: ['v1'] } }, async (req, reply) => {
     const body = missionSchema.parse(req.body);
     if (body.async) {
-      const queued = await enqueueWithTiming('mission', body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+      const queued = await enqueueWithTiming('mission' as any, body, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
       return reply.code(202).send({
         success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });

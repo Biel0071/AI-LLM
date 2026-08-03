@@ -60,6 +60,6 @@ export async function providersRoutes(secured: FastifyInstance): Promise<void> {
       provider: z.string().optional(),
       model: z.string().optional(),
     }).parse(req.body);
-    return execute('text', body, (provider) => provider.generateText(body), { cache: false });
+    return execute('chat', body, (provider) => provider.generateText(body), { cache: false });
   });
 }
