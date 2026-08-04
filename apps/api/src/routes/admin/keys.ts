@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { fail, hashApiKey } from '@ai-platform/shared';
+import { fail, hashApiKey } from '@api-platform/shared';
 import { prisma } from '../../lib/prisma';
 import { redis } from '../../lib/redis';
 
@@ -44,7 +44,7 @@ export async function keysRoutes(secured: FastifyInstance): Promise<void> {
   secured.delete('/api-keys/:id', { schema: { tags: ['admin'] } }, async (req) => {
     const { id } = req.params as { id: string };
     const revoked = await prisma.apiKey.update({ where: { id }, data: { active: false }, select: { keyHash: true } });
-    await redis.del(`aiplatform:apikey:v2:${revoked.keyHash}`, `aiplatform:apikey:${revoked.keyHash}`);
+    await redis.del(`apiplatform:apikey:v2:${revoked.keyHash}`, `apiplatform:apikey:${revoked.keyHash}`);
     return { success: true };
   });
 
@@ -55,7 +55,7 @@ export async function keysRoutes(secured: FastifyInstance): Promise<void> {
     
     // Revoke old key
     await prisma.apiKey.update({ where: { id }, data: { active: false } });
-    await redis.del(`aiplatform:apikey:v2:${oldKey.keyHash}`, `aiplatform:apikey:${oldKey.keyHash}`);
+    await redis.del(`apiplatform:apikey:v2:${oldKey.keyHash}`, `apiplatform:apikey:${oldKey.keyHash}`);
 
     // Create new key with same properties
     const key = `ap_${oldKey.environment}_${randomBytes(24).toString('hex')}`;

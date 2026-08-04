@@ -7,7 +7,7 @@ const optionalAutoString = z.preprocess(
 
 export const callbackSchema = z.object({
   url: z.string().url().max(2_048),
-  /** Segredo usado para assinar o corpo em x-ai-platform-signature. */
+  /** Segredo usado para assinar o corpo em x-api-platform-signature. */
   secret: z.string().min(16).max(512).optional(),
 });
 

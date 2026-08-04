@@ -1,4 +1,4 @@
-/* AI Platform — Dashboard administrativo (SPA sem build) */
+/* API Platform — Dashboard administrativo (SPA sem build) */
 (() => {
   'use strict';
 
@@ -7,9 +7,9 @@
   const content = () => $('#content');
 
   // ---------- Auth ----------
-  const token = () => localStorage.getItem('aiplatform_token');
-  const setToken = (t) => localStorage.setItem('aiplatform_token', t);
-  const clearToken = () => localStorage.removeItem('aiplatform_token');
+  const token = () => localStorage.getItem('apiplatform_token');
+  const setToken = (t) => localStorage.setItem('apiplatform_token', t);
+  const clearToken = () => localStorage.removeItem('apiplatform_token');
 
   async function api(path, options = {}) {
     const res = await fetch(API + path, {
@@ -78,14 +78,14 @@
     showLogin();
   });
 
-  const navState = JSON.parse(localStorage.getItem('aiplatform_nav') || '{"dashboard":true}');
+  const navState = JSON.parse(localStorage.getItem('apiplatform_nav') || '{"dashboard":true}');
   document.querySelectorAll('.nav-group').forEach((group) => {
     const name = group.dataset.group;
     group.classList.toggle('open', Boolean(navState[name]));
     group.querySelector('.nav-group-toggle').addEventListener('click', () => {
       navState[name] = !group.classList.contains('open');
       group.classList.toggle('open', navState[name]);
-      localStorage.setItem('aiplatform_nav', JSON.stringify(navState));
+      localStorage.setItem('apiplatform_nav', JSON.stringify(navState));
     });
   });
 
@@ -564,13 +564,13 @@
       content().innerHTML=`<h1>Conectar ao Lovable</h1><p class="muted">Configuração guiada: projeto, chave, código e teste.</p>
         <div class="wizard-steps"><span class="active">1 Projeto</span><span>2 API Key</span><span>3 Código</span><span>4 Testar</span></div>
         <div class="card section"><h2>1. Escolha o projeto</h2>${projects.length?`<label>Projeto <select id="lv-project">${projects.map(p=>`<option>${esc(p.name)}</option>`).join('')}</select></label>`:`<p class="empty-state">Você ainda não possui projeto. <a href="#/projects">Criar primeiro projeto</a></p>`}</div>
-        <div class="card section"><h2>2. Informe a API Key</h2><p class="muted">A chave fica apenas nesta sessão do navegador e será enviada somente para sua AI Platform local.</p><label>API Key <input id="lv-key" type="password" placeholder="ap_live_..." autocomplete="off" /></label><a class="button-link" href="#/keys">Criar nova chave</a></div>
-        <div class="card section"><h2>3. Cole no Lovable</h2><pre class="code">AI_PLATFORM_URL=${esc(base)}\nAI_PLATFORM_API_KEY=ap_live_xxxxx\n\nfetch(AI_PLATFORM_URL + '/v1/text', {\n  method: 'POST',\n  headers: { 'content-type': 'application/json', 'x-api-key': AI_PLATFORM_API_KEY },\n  body: JSON.stringify({ prompt: 'Olá!' })\n});</pre></div>
+        <div class="card section"><h2>2. Informe a API Key</h2><p class="muted">A chave fica apenas nesta sessão do navegador e será enviada somente para sua API Platform local.</p><label>API Key <input id="lv-key" type="password" placeholder="ap_live_..." autocomplete="off" /></label><a class="button-link" href="#/keys">Criar nova chave</a></div>
+        <div class="card section"><h2>3. Cole no Lovable</h2><pre class="code">api_platform_URL=${esc(base)}\napi_platform_API_KEY=ap_live_xxxxx\n\nfetch(api_platform_URL + '/v1/text', {\n  method: 'POST',\n  headers: { 'content-type': 'application/json', 'x-api-key': api_platform_API_KEY },\n  body: JSON.stringify({ prompt: 'Olá!' })\n});</pre></div>
         <div class="card section"><h2>4. Teste a conexão</h2><button id="lv-test">Testar chave</button><span id="lv-status" class="muted"></span></div>`;
       $('#lv-test').onclick=async()=>{const st=$('#lv-status'),key=$('#lv-key').value;if(!key){st.textContent=' Informe a chave.';st.className='error';return}st.textContent=' Testando...';try{const r=await fetch(API+'/v1/models',{headers:{'x-api-key':key}}),d=await r.json();if(!r.ok)throw new Error(d?.error?.message||'Chave recusada');st.textContent=' Conexão validada — Lovable já pode usar a plataforma.';st.className='ok';}catch(e){st.textContent=' '+e.message;st.className='error';}};
     },
     async integrations() {
-      const examples={Lovable:`const api = new AIPlatform({\n  url: "${location.origin.replace(':8080',':3000')}",\n  apiKey: "ap_live_xxxxx"\n});`,React:`fetch(AI_PLATFORM_URL + '/v1/text', {\n method:'POST', headers:{'content-type':'application/json','x-api-key':AI_PLATFORM_API_KEY},\n body:JSON.stringify({prompt:'Olá'})\n});`,Node:`const response = await fetch(process.env.AI_PLATFORM_URL + '/v1/chat', { headers: {'x-api-key': process.env.AI_PLATFORM_API_KEY} });`,Python:`client = AIPlatform(url=AI_PLATFORM_URL, api_key=AI_PLATFORM_API_KEY)\nresult = client.text("Olá")`,PHP:`$headers = ['x-api-key: '.getenv('AI_PLATFORM_API_KEY')];`,Flutter:`headers: {'x-api-key': aiPlatformApiKey}`};
+      const examples={Lovable:`const api = new apiplatform({\n  url: "${location.origin.replace(':8080',':3000')}",\n  apiKey: "ap_live_xxxxx"\n});`,React:`fetch(api_platform_URL + '/v1/text', {\n method:'POST', headers:{'content-type':'application/json','x-api-key':api_platform_API_KEY},\n body:JSON.stringify({prompt:'Olá'})\n});`,Node:`const response = await fetch(process.env.api_platform_URL + '/v1/chat', { headers: {'x-api-key': process.env.api_platform_API_KEY} });`,Python:`client = apiplatform(url=api_platform_URL, api_key=api_platform_API_KEY)\nresult = client.text("Olá")`,PHP:`$headers = ['x-api-key: '.getenv('api_platform_API_KEY')];`,Flutter:`headers: {'x-api-key': apiplatformApiKey}`};
       content().innerHTML=`<h1>Integrações</h1><p class="muted">Escolha sua tecnologia. O projeto cliente precisa conhecer apenas URL e API Key.</p>${Object.entries(examples).map(([name,code])=>`<div class="card section"><h2>${name}</h2><pre class="code">${esc(code)}</pre></div>`).join('')}`;
     },
 
@@ -583,7 +583,7 @@
       content().innerHTML=`<h1>Base URL</h1><p class="muted">Um único endereço para todos os projetos.</p><div class="card section"><h2>Endpoint da plataforma</h2><pre class="code">${esc(base)}</pre><p>Header obrigatório: <code>x-api-key: ap_live_...</code></p></div><div class="section"><h2>Rotas principais</h2>${table(['Capacidade','Endpoint'],[['Chat','POST /v1/chat'],['Imagem','POST /v1/image'],['Vídeo','POST /v1/video'],['Vision','POST /v1/vision'],['Embedding','POST /v1/embedding'],['Workflow','POST /v1/workflow']])}</div>`;
     },
     async sdk() {
-      const base=location.origin.replace(':8080',':3000'); const snippets={JavaScript:`const client = new AIPlatform({ baseUrl: '${base}', apiKey: process.env.AI_PLATFORM_API_KEY });`,TypeScript:`const result = await client.chat({ messages: [{ role: 'user', content: 'Olá' }] });`,Python:`client = AIPlatform(base_url='${base}', api_key=os.environ['AI_PLATFORM_API_KEY'])`,cURL:`curl -X POST ${base}/v1/chat -H "x-api-key: $AI_PLATFORM_API_KEY"`};
+      const base=location.origin.replace(':8080',':3000'); const snippets={JavaScript:`const client = new apiplatform({ baseUrl: '${base}', apiKey: process.env.api_platform_API_KEY });`,TypeScript:`const result = await client.chat({ messages: [{ role: 'user', content: 'Olá' }] });`,Python:`client = apiplatform(base_url='${base}', api_key=os.environ['api_platform_API_KEY'])`,cURL:`curl -X POST ${base}/v1/chat -H "x-api-key: $api_platform_API_KEY"`};
       content().innerHTML=`<h1>SDK</h1><p class="muted">Clientes e exemplos mínimos para integrar qualquer aplicação.</p>${Object.entries(snippets).map(([name,code])=>`<div class="card section"><h2>${name}</h2><pre class="code">${esc(code)}</pre></div>`).join('')}`;
     },
     async security() {
@@ -592,7 +592,7 @@
     },
     async backup() {
       const health=await fetch(API+'/v1/health').then(r=>r.json());
-      content().innerHTML=`<h1>Backup</h1><p class="muted">Procedimentos para PostgreSQL, Redis e arquivos gerados.</p><div class="cards">${card('Banco',health.checks.database?'pronto':'indisponível',health.checks.database?'ok':'error')}${card('Redis',health.checks.redis?'pronto':'indisponível',health.checks.redis?'ok':'error')}${card('Storage','volume persistente','ok')}</div><div class="card section"><h2>Comandos operacionais</h2><pre class="code">docker compose exec postgres pg_dump -U aiplatform aiplatform &gt; backup.sql\ndocker compose exec redis redis-cli BGSAVE\ndocker run --rm -v ai-platform_image-storage:/data -v /backup:/backup alpine tar czf /backup/images.tar.gz /data</pre></div>`;
+      content().innerHTML=`<h1>Backup</h1><p class="muted">Procedimentos para PostgreSQL, Redis e arquivos gerados.</p><div class="cards">${card('Banco',health.checks.database?'pronto':'indisponível',health.checks.database?'ok':'error')}${card('Redis',health.checks.redis?'pronto':'indisponível',health.checks.redis?'ok':'error')}${card('Storage','volume persistente','ok')}</div><div class="card section"><h2>Comandos operacionais</h2><pre class="code">docker compose exec postgres pg_dump -U apiplatform apiplatform &gt; backup.sql\ndocker compose exec redis redis-cli BGSAVE\ndocker run --rm -v api-platform_image-storage:/data -v /backup:/backup alpine tar czf /backup/images.tar.gz /data</pre></div>`;
     },
     async settings() {
       const { tenants } = await api('/admin/tenants');

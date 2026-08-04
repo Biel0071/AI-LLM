@@ -1,12 +1,12 @@
-# AI Platform SDK (JavaScript)
+# API Platform SDK (JavaScript)
 
 Zero dependências — funciona em Node 18+, browsers e apps Lovable.
 Basta copiar `index.js` para o seu projeto (ou instalar via workspace).
 
 ```js
-import { AIPlatform } from '@ai-platform/sdk-js';
+import { apiplatform } from '@api-platform/sdk-js';
 
-const ai = new AIPlatform({ baseUrl: 'http://localhost:3000', apiKey: 'ap_...' });
+const ai = new apiplatform({ baseUrl: 'http://localhost:3000', apiKey: 'ap_...' });
 
 const { result } = await ai.text({ prompt: 'Descreva um tenis de corrida azul' });
 console.log(result.text);

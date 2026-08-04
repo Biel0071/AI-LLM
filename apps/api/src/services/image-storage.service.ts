@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
-import type { StandardResponse } from '@ai-platform/shared';
+import type { StandardResponse } from '@api-platform/shared';
 import { prisma } from '../lib/prisma';
 
 export async function persistImageResponse(

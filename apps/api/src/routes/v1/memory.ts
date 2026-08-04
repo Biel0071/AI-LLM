@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { executionMemoryContext, executionMemoryHash } from '@ai-platform/shared';
+import { executionMemoryContext, executionMemoryHash } from '@api-platform/shared';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 

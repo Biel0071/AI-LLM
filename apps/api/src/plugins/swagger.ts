@@ -7,9 +7,9 @@ export async function registerSwagger(app: FastifyInstance, docsEnabled = true):
     openapi: {
       openapi: '3.0.3',
       info: {
-        title: 'AI Platform',
+        title: 'API Platform',
         description:
-          'AI Gateway centralizado. Toda comunicacao: Lovable -> AI Platform -> Provider -> Resposta.',
+          'API Gateway centralizado. Toda comunicacao: Lovable -> API Platform -> Provider -> Resposta.',
         version: '1.0.0',
       },
       servers: [{ url: '/' }],

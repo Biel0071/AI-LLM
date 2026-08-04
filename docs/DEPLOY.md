@@ -8,7 +8,7 @@ roda localmente e em produção.
 ## VPS (Ubuntu/Debian)
 
 ```bash
-git clone <seu-repo> ai-platform && cd ai-platform
+git clone <seu-repo> api-platform && cd api-platform
 bash scripts/deploy-vps.sh
 ```
 

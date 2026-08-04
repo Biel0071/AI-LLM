@@ -1,8 +1,8 @@
 {
-  "name": "ai-platform",
+  "name": "api-platform",
   "version": "1.0.0",
   "private": true,
-  "description": "AI Platform Enterprise - AI Gateway centralizado para Lovable, SaaS, CRM, ERP e aplicacoes multi-tenant",
+  "description": "API Platform Enterprise - API Gateway centralizado para Lovable, SaaS, CRM, ERP e aplicacoes multi-tenant",
   "license": "MIT",
   "engines": {
     "node": ">=22.0.0"

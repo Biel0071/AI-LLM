@@ -12,7 +12,7 @@ import {
   QualityGateError,
   StandardResponse,
   TaskHint,
-} from '@ai-platform/shared';
+} from '@api-platform/shared';
 import { cacheService } from './cache.service';
 import { usageService } from './usage.service';
 import { metrics } from '../metrics';

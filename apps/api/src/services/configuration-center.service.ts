@@ -50,7 +50,7 @@ export class ConfigurationCenterService {
         circuitBreakerTimeoutMs: 5000,
       },
       security: {
-        jwtSecret: process.env.JWT_SECRET || 'ai-platform-secret-key',
+        jwtSecret: process.env.JWT_SECRET || 'api-platform-secret-key',
         requireApiKey: true,
         allowedOrigins: ['*'],
       },

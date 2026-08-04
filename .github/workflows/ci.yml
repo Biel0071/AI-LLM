@@ -38,10 +38,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build API image
-        run: docker build -f docker/api.Dockerfile -t ai-platform-api:ci .
+        run: docker build -f docker/api.Dockerfile -t api-platform-api:ci .
 
       - name: Build Worker image
-        run: docker build -f docker/worker.Dockerfile -t ai-platform-worker:ci .
+        run: docker build -f docker/worker.Dockerfile -t api-platform-worker:ci .
 
       - name: Build Dashboard image
-        run: docker build -f docker/dashboard.Dockerfile -t ai-platform-dashboard:ci .
+        run: docker build -f docker/dashboard.Dockerfile -t api-platform-dashboard:ci .

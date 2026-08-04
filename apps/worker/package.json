@@ -1,7 +1,7 @@
 {
-  "name": "@ai-platform/worker",
+  "name": "@api-platform/worker",
   "version": "1.0.0",
-  "description": "AI Platform - Workers de fila (BullMQ)",
+  "description": "API Platform - Workers de fila (BullMQ)",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -9,7 +9,7 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
-    "@ai-platform/shared": "1.0.0",
+    "@api-platform/shared": "1.0.0",
     "@prisma/client": "^5.20.0",
     "bullmq": "^5.12.0",
     "ioredis": "^5.4.1",

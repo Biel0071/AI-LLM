@@ -1,10 +1,10 @@
-import { cacheKey, StandardResponse, TokenUsage } from '@ai-platform/shared';
+import { cacheKey, StandardResponse, TokenUsage } from '@api-platform/shared';
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 
-const PREFIX = 'aiplatform:cache:';
+const PREFIX = 'apiplatform:cache:';
 
 export interface CachedPayload {
   provider: string;

@@ -1,8 +1,7 @@
 import Fastify, { FastifyInstance } from 'fastify';
-import fastifyStatic from '@fastify/static';
 import path from 'node:path';
 import { ZodError } from 'zod';
-import { fail, ProviderError } from '@ai-platform/shared';
+import { fail, ProviderError } from '@api-platform/shared';
 import { env } from './config/env';
 import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
@@ -144,7 +143,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     return {
       success: healthy,
       status: healthy ? 'ONLINE' : 'DEGRADED',
-      runtime: 'AI-Platform-Engine',
+      runtime: 'api-platform-Engine',
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
       ...checks
@@ -176,14 +175,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(v1Routes, { prefix: '/v1' });
   await app.register(adminRoutes, { prefix: '/admin' });
 
-  // ---------- Dashboard estatico ----------
-  const dashboardDir = path.resolve(__dirname, '../../dashboard/public');
-  await app.register(fastifyStatic, {
-    root: dashboardDir,
-    prefix: '/dashboard/',
-    decorateReply: true,
-  });
-  app.get('/', async (_req, reply) => reply.redirect('/dashboard/'));
+  app.get('/', async (_req, reply) => reply.send({ status: 'API Platform Gateway' }));
 
   return app;
 }

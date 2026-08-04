@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
-import { isPrivateAddress, reverseSourceResponseSchema } from '@ai-platform/shared';
+import { isPrivateAddress, reverseSourceResponseSchema } from '@api-platform/shared';
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
 import { prisma } from '../lib/prisma';
@@ -109,9 +109,9 @@ export async function pollReverseConnector(connectorId: string, force = false): 
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'user-agent': 'AI-Platform-Reverse-Poller/1.0',
-        'x-ai-platform-event': 'population.requested',
-        'x-ai-platform-signature': signature,
+        'user-agent': 'api-platform-Reverse-Poller/1.0',
+        'x-api-platform-event': 'population.requested',
+        'x-api-platform-signature': signature,
       },
       body: requestBody,
       signal: AbortSignal.timeout(env.REVERSE_TIMEOUT_MS),
@@ -119,7 +119,7 @@ export async function pollReverseConnector(connectorId: string, force = false): 
     const rawResponse = await response.text();
     if (!response.ok) throw new Error(`reverse source HTTP ${response.status}`);
     if (rawResponse.length > env.REVERSE_MAX_RESPONSE_BYTES) throw new Error('reverse source response is too large');
-    if (env.REVERSE_REQUIRE_RESPONSE_SIGNATURE && !validSignature(rawResponse, response.headers.get('x-ai-platform-signature'), secret)) {
+    if (env.REVERSE_REQUIRE_RESPONSE_SIGNATURE && !validSignature(rawResponse, response.headers.get('x-api-platform-signature'), secret)) {
       throw new Error('reverse source response signature is invalid');
     }
     const parsed = reverseSourceResponseSchema.parse(JSON.parse(rawResponse));

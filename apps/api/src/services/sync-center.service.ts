@@ -34,7 +34,7 @@ export class SyncCenterService {
 
   public getClusterStatus() {
     return {
-      clusterId: 'ai-platform-cluster-global',
+      clusterId: 'api-platform-cluster-global',
       totalNodes: this.nodes.size,
       activeNodes: Array.from(this.nodes.values()).filter((n) => n.status === 'ONLINE').length,
       nodes: Array.from(this.nodes.values()),

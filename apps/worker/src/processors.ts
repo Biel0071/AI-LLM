@@ -19,7 +19,7 @@ import {
   resolveAllowedCategory,
   StandardResponse,
   TaskHint,
-} from '@ai-platform/shared';
+} from '@api-platform/shared';
 
 const execFileAsync = promisify(execFile);
 
@@ -229,7 +229,7 @@ export const imageProcessor: ProcessorFn = async (job, registry) => {
     });
   }
   if (data.__kind === 'video-to-image') {
-    const dir = await mkdtemp(path.join(tmpdir(), 'aiplatform-video-'));
+    const dir = await mkdtemp(path.join(tmpdir(), 'apiplatform-video-'));
     try {
       const videoFile = path.join(dir, 'input.mp4');
       const raw = String(data.video).replace(/^data:video\/[a-z0-9+.-]+;base64,/i, '');
@@ -271,7 +271,7 @@ export const ocrProcessor: ProcessorFn = async (job, registry) => {
   if (engine === 'tesseract') {
     const parsed = parseImageInput(data.image);
     if (parsed.kind === 'url') throw new Error('tesseract engine requires base64 image');
-    const dir = await mkdtemp(path.join(tmpdir(), 'aiplatform-ocr-'));
+    const dir = await mkdtemp(path.join(tmpdir(), 'apiplatform-ocr-'));
     const file = path.join(dir, 'input.png');
     try {
       await writeFile(file, Buffer.from(parsed.data, 'base64'));
@@ -429,9 +429,9 @@ export const webhookProcessor: ProcessorFn = async (job) => {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'user-agent': 'AI-Platform-Webhook/1.0',
-      'x-ai-platform-event': data.event,
-      ...(signature ? { 'x-ai-platform-signature': signature } : {}),
+      'user-agent': 'api-platform-Webhook/1.0',
+      'x-api-platform-event': data.event,
+      ...(signature ? { 'x-api-platform-signature': signature } : {}),
     },
     body: rawBody,
     signal: AbortSignal.timeout(Math.max(1_000, Number(process.env.WEBHOOK_TIMEOUT_MS ?? 10_000))),

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
-import { fail, ImageProvider } from '@ai-platform/shared';
+import { fail, ImageProvider } from '@api-platform/shared';
 import { execute, registry } from '../../services/ai.service';
 import { enqueue, queueStats } from '../../services/queue.service';
 import { persistImageResponse } from '../../services/image-storage.service';

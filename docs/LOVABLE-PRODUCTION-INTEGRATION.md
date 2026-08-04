@@ -1,9 +1,9 @@
-# Integração Lovable — AI Platform Production
+# Integração Lovable — API Platform Production
 
 ## Endpoints reais
 
 - API base: `http://SEU_IP:3000` — o `scripts/deploy-vps.sh` imprime a URL
-  real (com o IP público detectado da VPS) e a `AI_PLATFORM_API_KEY` ao final
+  real (com o IP público detectado da VPS) e a `api_platform_API_KEY` ao final
   do deploy, prontas para copiar. Em produção com domínio, use
   `https://SEU_DOMINIO`.
 - Health público: `GET /v1/health`
@@ -14,23 +14,23 @@
 - Status individual: `GET /v1/jobs/:id`
 - Estatísticas das filas: `GET /v1/jobs/stats`
 
-A chave nunca deve ser colocada em `VITE_*`, no JavaScript do navegador ou commitada. Cadastre-a como secret server-side `AI_PLATFORM_API_KEY` no Lovable Cloud/Supabase e faça as chamadas por Edge Function.
+A chave nunca deve ser colocada em `VITE_*`, no JavaScript do navegador ou commitada. Cadastre-a como secret server-side `api_platform_API_KEY` no Lovable Cloud/Supabase e faça as chamadas por Edge Function.
 
 ## Prompt para colar no Lovable
 
 ```text
-Integre este projeto à AI Platform de produção usando uma Edge Function server-side.
+Integre este projeto à API Platform de produção usando uma Edge Function server-side.
 
 Secrets obrigatórios:
-AI_PLATFORM_BASE_URL=http://SEU_IP:3000   (use a URL impressa pelo deploy)
-AI_PLATFORM_API_KEY=<colar a chave live fornecida separadamente>
+api_platform_BASE_URL=http://SEU_IP:3000   (use a URL impressa pelo deploy)
+api_platform_API_KEY=<colar a chave live fornecida separadamente>
 
-Nunca exponha AI_PLATFORM_API_KEY no frontend, localStorage, logs ou respostas HTTP.
+Nunca exponha api_platform_API_KEY no frontend, localStorage, logs ou respostas HTTP.
 
-Crie uma Edge Function `ai-platform` que:
+Crie uma Edge Function `api-platform` que:
 1. aceite somente usuários autenticados;
 2. valide os campos recebidos;
-3. envie `x-api-key: Deno.env.get("AI_PLATFORM_API_KEY")`;
+3. envie `x-api-key: Deno.env.get("api_platform_API_KEY")`;
 4. aplique timeout de 30s nas operações síncronas;
 5. para imagens e lotes, use modo assíncrono e devolva o jobId imediatamente;
 6. consulte `/v1/jobs/:id` ou `/v1/jobs/status` a cada 2 segundos, com backoff até 10 segundos;
@@ -75,8 +75,8 @@ Envie no maximo 10000 itens por lote. Salve jobIds no banco vinculados ao regist
 ## Teste rápido server-side
 
 ```bash
-curl -X POST "$AI_PLATFORM_BASE_URL/v1/text" \
-  -H "x-api-key: $AI_PLATFORM_API_KEY" \
+curl -X POST "$api_platform_BASE_URL/v1/text" \
+  -H "x-api-key: $api_platform_API_KEY" \
   -H "content-type: application/json" \
   -d '{"prompt":"Responda somente INTEGRACAO-OK","cache":false}'
 ```

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { reverseConnectorSchema } from '@ai-platform/shared';
+import { reverseConnectorSchema } from '@api-platform/shared';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { pollReverseConnector, sealReverseSecret } from '../../services/reverse-poller.service';

@@ -10,8 +10,8 @@ Use o valor de `DEFAULT_API_KEY` do `.env`, ou gere uma nova no dashboard
 Crie uma variável de ambiente/secret no seu projeto Lovable:
 
 ```
-AI_PLATFORM_URL=https://sua-plataforma.com   (ou http://localhost:3000)
-AI_PLATFORM_KEY=ap_...
+api_platform_URL=https://sua-plataforma.com   (ou http://localhost:3000)
+api_platform_KEY=ap_...
 ```
 
 ## 3. Chame a plataforma
@@ -20,11 +20,11 @@ AI_PLATFORM_KEY=ap_...
 
 ```ts
 async function ai(path: string, body: unknown) {
-  const res = await fetch(`${import.meta.env.AI_PLATFORM_URL}${path}`, {
+  const res = await fetch(`${import.meta.env.api_platform_URL}${path}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': import.meta.env.AI_PLATFORM_KEY,
+      'x-api-key': import.meta.env.api_platform_KEY,
     },
     body: JSON.stringify(body),
   });
@@ -37,11 +37,11 @@ async function ai(path: string, body: unknown) {
 ### Opção B — SDK JavaScript (copie `packages/sdk-js/index.js` para o projeto)
 
 ```ts
-import { AIPlatform } from './ai-platform-sdk';
+import { apiplatform } from './api-platform-sdk';
 
-const ai = new AIPlatform({
-  baseUrl: import.meta.env.AI_PLATFORM_URL,
-  apiKey: import.meta.env.AI_PLATFORM_KEY,
+const ai = new apiplatform({
+  baseUrl: import.meta.env.api_platform_URL,
+  apiKey: import.meta.env.api_platform_KEY,
 });
 ```
 

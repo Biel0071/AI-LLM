@@ -3,25 +3,25 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ai_platform_postgres
+    container_name: api_platform_postgres
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-aiplatform}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiplatform_secret_pass}
-      POSTGRES_DB: ${POSTGRES_DB:-aiplatform}
+      POSTGRES_USER: ${POSTGRES_USER:-apiplatform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apiplatform_secret_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-apiplatform}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aiplatform"]
+      test: ["CMD-SHELL", "pg_isready -U apiplatform"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: ai_platform_redis
+    container_name: api_platform_redis
     restart: always
     command: redis-server --appendonly yes
     ports:
@@ -38,7 +38,7 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-    container_name: ai_platform_api
+    container_name: api_platform_api
     restart: always
     depends_on:
       postgres:
@@ -49,9 +49,9 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOST: 0.0.0.0
-      DATABASE_URL: postgresql://${POSTGRES_USER:-aiplatform}:${POSTGRES_PASSWORD:-aiplatform_secret_pass}@postgres:5432/${POSTGRES_DB:-aiplatform}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-apiplatform}:${POSTGRES_PASSWORD:-apiplatform_secret_pass}@postgres:5432/${POSTGRES_DB:-apiplatform}?schema=public
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-aiplatform_prod_jwt_secret}
+      JWT_SECRET: ${JWT_SECRET:-apiplatform_prod_jwt_secret}
     ports:
       - "${API_PORT_HOST:-3001}:3000"
 
@@ -59,19 +59,19 @@ services:
     build:
       context: .
       dockerfile: docker/worker.Dockerfile
-    container_name: ai_platform_worker
+    container_name: api_platform_worker
     restart: always
     depends_on:
       redis:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-aiplatform}:${POSTGRES_PASSWORD:-aiplatform_secret_pass}@postgres:5432/${POSTGRES_DB:-aiplatform}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-apiplatform}:${POSTGRES_PASSWORD:-apiplatform_secret_pass}@postgres:5432/${POSTGRES_DB:-apiplatform}?schema=public
       REDIS_URL: redis://redis:6379
 
   nginx:
     image: nginx:alpine
-    container_name: ai_platform_nginx
+    container_name: api_platform_nginx
     restart: always
     depends_on:
       - api

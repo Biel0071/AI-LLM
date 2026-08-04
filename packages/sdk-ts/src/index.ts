@@ -1,15 +1,15 @@
 /**
- * AI Platform SDK (TypeScript)
+ * API Platform SDK (TypeScript)
  *
  * ```ts
- * import { AIPlatform } from '@ai-platform/sdk';
- * const ai = new AIPlatform({ baseUrl: 'http://localhost:3000', apiKey: 'ap_...' });
+ * import { apiplatform } from '@api-platform/sdk';
+ * const ai = new apiplatform({ baseUrl: 'http://localhost:3000', apiKey: 'ap_...' });
  * const res = await ai.text({ prompt: 'Descreva um tenis de corrida' });
  * console.log(res.result.text);
  * ```
  */
 
-export interface AIPlatformOptions {
+export interface apiplatformOptions {
   baseUrl: string;
   apiKey: string;
   timeoutMs?: number;
@@ -51,19 +51,19 @@ export interface JobStatus {
   error?: string;
 }
 
-export class AIPlatformError extends Error {
+export class apiplatformError extends Error {
   constructor(
     public readonly code: string,
     message: string,
     public readonly status?: number,
   ) {
     super(message);
-    this.name = 'AIPlatformError';
+    this.name = 'apiplatformError';
   }
 }
 
-export class AIPlatform {
-  constructor(private readonly options: AIPlatformOptions) {}
+export class apiplatform {
+  constructor(private readonly options: apiplatformOptions) {}
 
   private async request<T>(path: string, method: string, body?: unknown): Promise<T> {
     const controller = new AbortController();
@@ -80,7 +80,7 @@ export class AIPlatform {
       });
       const data: any = await res.json();
       if (!res.ok || data?.success === false) {
-        throw new AIPlatformError(
+        throw new apiplatformError(
           data?.error?.code ?? 'HTTP_ERROR',
           data?.error?.message ?? `HTTP ${res.status}`,
           res.status,
@@ -164,7 +164,7 @@ export class AIPlatform {
       if (status.status === 'completed' || status.status === 'failed') return status;
       await new Promise((r) => setTimeout(r, opts.pollMs ?? 2000));
     }
-    throw new AIPlatformError('TIMEOUT', `job ${jobId} did not finish in time`);
+    throw new apiplatformError('TIMEOUT', `job ${jobId} did not finish in time`);
   }
 
   /** Lista modelos disponiveis */
@@ -202,4 +202,4 @@ export class AIPlatform {
   }
 }
 
-export default AIPlatform;
+export default apiplatform;

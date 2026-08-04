@@ -83,7 +83,7 @@ export async function registerOpenAICompatRoutes(fastify: FastifyInstance) {
         completion_tokens: completionTokens,
         total_tokens: totalTokens,
       },
-      system_fingerprint: `fp_ai_platform_${resolvedProvider}`,
+      system_fingerprint: `fp_api_platform_${resolvedProvider}`,
     });
   });
 

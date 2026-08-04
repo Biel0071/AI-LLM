@@ -1,13 +1,13 @@
-# AI Platform SDK (Python)
+# API Platform SDK (Python)
 
 ```bash
 pip install -e packages/sdk-python
 ```
 
 ```python
-from ai_platform import AIPlatform
+from api_platform import apiplatform
 
-ai = AIPlatform(base_url="http://localhost:3000", api_key="ap_...")
+ai = apiplatform(base_url="http://localhost:3000", api_key="ap_...")
 
 # Texto
 res = ai.text(prompt="Descreva um tenis de corrida azul")

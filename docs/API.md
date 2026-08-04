@@ -179,28 +179,28 @@ próximos da `FREE_PROVIDER_ORDER` em caso de falha. ComfyUI offline retorna
 - `POST /v1/audio` — responde `501` até existir um provider de áudio configurado.
 
 ```bash
-curl -X POST "$AI_PLATFORM_URL/v1/chat" \
+curl -X POST "$api_platform_URL/v1/chat" \
   -H "content-type: application/json" \
-  -H "x-api-key: $AI_PLATFORM_API_KEY" \
+  -H "x-api-key: $api_platform_API_KEY" \
   -d '{"messages":[{"role":"user","content":"Olá"}],"provider":"ollama"}'
 ```
 
 ```ts
-const response = await fetch(`${AI_PLATFORM_URL}/v1/chat`, {
+const response = await fetch(`${api_platform_URL}/v1/chat`, {
   method: 'POST',
-  headers: { 'content-type': 'application/json', 'x-api-key': AI_PLATFORM_API_KEY },
+  headers: { 'content-type': 'application/json', 'x-api-key': api_platform_API_KEY },
   body: JSON.stringify({ messages: [{ role: 'user', content: 'Olá' }] }),
 });
 ```
 
 ### Supabase Edge Function / Lovable
 
-Armazene a chave em `AI_PLATFORM_API_KEY` nos secrets do projeto, nunca no frontend público.
+Armazene a chave em `api_platform_API_KEY` nos secrets do projeto, nunca no frontend público.
 
 ```ts
-Deno.serve(async (req) => fetch(`${Deno.env.get('AI_PLATFORM_URL')}/v1/chat`, {
+Deno.serve(async (req) => fetch(`${Deno.env.get('api_platform_URL')}/v1/chat`, {
   method: 'POST',
-  headers: { 'content-type': 'application/json', 'x-api-key': Deno.env.get('AI_PLATFORM_API_KEY')! },
+  headers: { 'content-type': 'application/json', 'x-api-key': Deno.env.get('api_platform_API_KEY')! },
   body: await req.text(),
 }));
 ```
@@ -225,7 +225,7 @@ Jobs individuais, lotes e texto assincrono aceitam callback:
 }
 ```
 
-A entrega reversa ocorre em uma fila `webhook` separada, com 5 tentativas e backoff exponencial. O header `x-ai-platform-event` vale `job.completed` ou `job.failed`. Valide `x-ai-platform-signature`, calculado como `sha256=HMAC_SHA256(secret, corpo_raw)`, antes de aplicar o resultado. A URL deve usar HTTPS e nao pode resolver para rede privada. Para integracao interna deliberada, `WEBHOOK_ALLOW_HTTP=true` libera HTTP, mas enderecos privados continuam bloqueados.
+A entrega reversa ocorre em uma fila `webhook` separada, com 5 tentativas e backoff exponencial. O header `x-api-platform-event` vale `job.completed` ou `job.failed`. Valide `x-api-platform-signature`, calculado como `sha256=HMAC_SHA256(secret, corpo_raw)`, antes de aplicar o resultado. A URL deve usar HTTPS e nao pode resolver para rede privada. Para integracao interna deliberada, `WEBHOOK_ALLOW_HTTP=true` libera HTTP, mas enderecos privados continuam bloqueados.
 
 Para populacoes de ate 10.000 itens, envie uma unica chamada a `/v1/jobs/batch`, inclua um callback em cada item e nao mantenha conexoes HTTP abertas. O sistema deduplica jobs equivalentes, processa na velocidade sustentavel da maquina e devolve cada conclusao ao sistema de origem.
 ### Estado operacional da populacao

@@ -9,6 +9,31 @@ import { ReplicateProvider } from './replicate.provider';
 import { SDAPIProvider } from './sdapi.provider';
 import { MissionProvider } from './mission.provider';
 
+export interface ProviderMetrics {
+  priority: number;       // 1 = Local First, 2 = Cloud Second, 3 = Fallback Third
+  health: number;         // 0.0 a 1.0 (1.0 = 100% healthy)
+  latency: number;        // ms
+  contextWindow: number;  // tokens
+  cost: number;           // relative cost (0 = free/local, higher = more expensive)
+  throughput: number;     // tokens per second
+}
+
+// Em um ambiente real, este estado seria mantido num Redis.
+// Mock inicial para suportar a politica Local First -> Cloud Second -> Fallback Third
+const mockMetrics: Record<string, ProviderMetrics> = {
+  'ollama': { priority: 1, health: 1.0, latency: 150, contextWindow: 8192, cost: 0, throughput: 50 },
+  'lmstudio': { priority: 1, health: 1.0, latency: 120, contextWindow: 8192, cost: 0, throughput: 60 },
+  'comfyui': { priority: 1, health: 1.0, latency: 5000, contextWindow: 0, cost: 0, throughput: 1 },
+  'forge': { priority: 1, health: 1.0, latency: 4000, contextWindow: 0, cost: 0, throughput: 1 },
+  'gemini': { priority: 2, health: 0.99, latency: 300, contextWindow: 1048576, cost: 1, throughput: 100 },
+  'anthropic': { priority: 2, health: 0.99, latency: 400, contextWindow: 200000, cost: 3, throughput: 80 },
+  'openai': { priority: 2, health: 0.99, latency: 350, contextWindow: 128000, cost: 2, throughput: 90 },
+  'groq': { priority: 2, health: 0.99, latency: 50, contextWindow: 32768, cost: 0.5, throughput: 800 },
+  'cloudflare': { priority: 2, health: 0.98, latency: 80, contextWindow: 8192, cost: 0.1, throughput: 300 },
+  'openrouter': { priority: 3, health: 0.95, latency: 600, contextWindow: 128000, cost: 1.5, throughput: 40 },
+  'replicate': { priority: 3, health: 0.90, latency: 2000, contextWindow: 8192, cost: 2, throughput: 20 },
+};
+
 export interface ProviderScoreContext {
   availability: number;
   latency: number;
@@ -56,17 +81,42 @@ export class ProviderRegistry {
   }
 
   /**
-   * Calcula um Score basico para o provider, permitindo
-   * um roteamento mais inteligente (Availability, Latency, Cost, Quality).
-   * Valores placeholder; devem ser substituídos pelo MetricsRegistry em Prod.
+   * Pipeline Enterprise v2.0:
+   * Capability ➔ Priority ➔ Health ➔ Latency ➔ Context Window ➔ Preço ➔ Throughput ➔ Provider
    */
   public calculateScore(provider: AIProvider, _capability: Capability): number {
-    let score = 100;
-    // OpenAI tende a ter qualidade maior, mas talvez custo maior.
-    if (provider.name === 'openai') score += 20;
-    if (provider.name === 'anthropic') score += 20;
-    if (provider.name === 'ollama') score += 10; // custo zero, latencia varíavel
-    // Fallback order fallback:
+    const metrics = mockMetrics[provider.name] || {
+      priority: 3, // assume fallback
+      health: 1.0,
+      latency: 1000,
+      contextWindow: 4096,
+      cost: 5,
+      throughput: 10
+    };
+
+    // Filtro rígido de health (se menor que 0.5, penaliza absurdamente)
+    if (metrics.health < 0.5) return -9999;
+
+    let score = 10000;
+    
+    // Priority (Local First = 1 -> +3000 pts, Cloud Second = 2 -> +2000 pts)
+    score += (4 - metrics.priority) * 1000;
+
+    // Health (0.0 a 1.0) -> até +500 pts
+    score += metrics.health * 500;
+
+    // Latency (menor é melhor) -> -1 pt por ms
+    score -= metrics.latency;
+
+    // Context Window (maior é melhor) -> +1 pt a cada 10k tokens
+    score += (metrics.contextWindow / 10000);
+
+    // Preço (menor é melhor) -> -100 pts por unidade de custo
+    score -= (metrics.cost * 100);
+
+    // Throughput (maior é melhor) -> +1 pt por token/s
+    score += metrics.throughput;
+
     return score;
   }
 

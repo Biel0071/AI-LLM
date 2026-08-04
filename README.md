@@ -1,11 +1,11 @@
-# AI Platform Enterprise
+# API Platform Enterprise
 
-**AI Gateway centralizado** para Lovable, SaaS, CRM, ERP e aplicações multi-tenant.
+**API Gateway centralizado** para Lovable, SaaS, CRM, ERP e aplicações multi-tenant.
 
 Toda a comunicação segue o fluxo:
 
 ```
-Lovable  →  AI Platform  →  Provider (Ollama, OpenAI, Gemini, Claude, ComfyUI...)  →  Resposta
+Lovable  →  API Platform  →  Provider (Ollama, OpenAI, Gemini, Claude, ComfyUI...)  →  Resposta
 ```
 
 O Lovable **nunca** acessa um provider diretamente. A plataforma centraliza autenticação, cache, filas, custos, observabilidade e multi-tenancy.

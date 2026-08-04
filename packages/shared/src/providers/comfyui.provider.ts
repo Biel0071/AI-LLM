@@ -149,7 +149,7 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
         },
       },
       '6': { class_type: 'VAEDecode', inputs: { samples: ['5', 0], vae: ['1', 2] } },
-      '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'aiplatform' } },
+      '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'apiplatform' } },
     };
     const { modelRef, clipRef } = this.applyLcmLora(graph, input.steps);
     graph['2'] = { class_type: 'CLIPTextEncode', inputs: { text: input.prompt, clip: clipRef } };
@@ -186,7 +186,7 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
       '10': { class_type: 'ImageScale', inputs: { image: ['8', 0], upscale_method: 'lanczos', width, height, crop: 'center' } },
       '9': { class_type: 'VAEEncode', inputs: { pixels: ['10', 0], vae: ['1', 2] } },
       '6': { class_type: 'VAEDecode', inputs: { samples: ['5', 0], vae: ['1', 2] } },
-      '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'aiplatform' } },
+      '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'apiplatform' } },
     };
     const { modelRef, clipRef } = this.applyLcmLora(graph, input.steps);
     graph['2'] = { class_type: 'CLIPTextEncode', inputs: { text: input.prompt, clip: clipRef } };
@@ -252,7 +252,7 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
         },
       },
       '6': { class_type: 'VAEDecode', inputs: { samples: ['5', 0], vae: ['1', 2] } },
-      '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'aiplatform_zero123' } },
+      '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'apiplatform_zero123' } },
     };
   }
 
@@ -264,7 +264,7 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
         class_type: 'ImageUpscaleWithModel',
         inputs: { upscale_model: ['2', 0], image: ['1', 0] },
       },
-      '4': { class_type: 'SaveImage', inputs: { images: ['3', 0], filename_prefix: 'aiplatform_upscale' } },
+      '4': { class_type: 'SaveImage', inputs: { images: ['3', 0], filename_prefix: 'apiplatform_upscale' } },
     };
   }
 
@@ -301,7 +301,7 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
         buffer = Buffer.from(parsed.data, 'base64');
       }
       const form = new FormData();
-      const name = `aiplatform_${Date.now()}.png`;
+      const name = `apiplatform_${Date.now()}.png`;
       form.append('image', new Blob([new Uint8Array(buffer)], { type: 'image/png' }), name);
       const res = await fetch(this.url('/upload/image'), { method: 'POST', body: form, signal: AbortSignal.timeout(this.timeoutMs) });
       if (!res.ok) throw new ProviderError(this.name, `image upload failed: HTTP ${res.status}`);
@@ -314,7 +314,7 @@ export class ComfyUIProvider extends BaseProvider implements ImageProvider {
     return this.withRetry(async () => {
       const data = await this.http<any>(this.url('/prompt'), {
         method: 'POST',
-        body: { prompt: workflow, client_id: 'ai-platform' },
+        body: { prompt: workflow, client_id: 'api-platform' },
       });
       const promptId = data?.prompt_id;
       if (!promptId) throw new ProviderError(this.name, `submit failed: ${JSON.stringify(data).slice(0, 300)}`);

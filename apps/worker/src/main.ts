@@ -19,7 +19,7 @@ import {
   QualityReport,
   resolveAllowedCategory,
   StandardResponse,
-} from '@ai-platform/shared';
+} from '@api-platform/shared';
 import { processors } from './processors';
 
 const logger = pino({
@@ -34,10 +34,10 @@ const prisma = new PrismaClient();
 let registry = createRegistryFromEnv(process.env);
 const maxConcurrency = Math.max(1, Number(process.env.WORKER_CONCURRENCY ?? 4));
 let effectiveConcurrency = maxConcurrency;
-const prefix = process.env.QUEUE_PREFIX ?? 'aiplatform';
+const prefix = process.env.QUEUE_PREFIX ?? 'apiplatform';
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const registryTtlMs = Math.max(1_000, Number(process.env.PROVIDER_REGISTRY_TTL_MS ?? 15_000));
-const heartbeatFile = process.env.WORKER_HEARTBEAT_FILE ?? '/tmp/aiplatform-worker-heartbeat';
+const heartbeatFile = process.env.WORKER_HEARTBEAT_FILE ?? '/tmp/apiplatform-worker-heartbeat';
 const globalConcurrency = Math.max(1, Number(process.env.GLOBAL_WORKER_CONCURRENCY ?? maxConcurrency));
 let registryLoadedAt = 0;
 
@@ -469,7 +469,7 @@ const heartbeatTimer = setInterval(() => void safeHeartbeat(), 30_000);
 
 logger.info(
   { queues: queueNames, concurrency: maxConcurrency, globalConcurrency, adaptive: process.env.ADAPTIVE_CONCURRENCY !== 'false', providers: registry.list().map((p) => p.name) },
-  'AI Platform worker online',
+  'API Platform worker online',
 );
 
 let shuttingDown = false;

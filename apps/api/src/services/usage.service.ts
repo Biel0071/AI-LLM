@@ -1,4 +1,4 @@
-import type { TokenUsage } from '@ai-platform/shared';
+import type { TokenUsage } from '@api-platform/shared';
 import { logger } from '../lib/logger';
 import { prisma } from '../lib/prisma';
 

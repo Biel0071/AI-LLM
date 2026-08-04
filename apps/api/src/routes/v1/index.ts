@@ -25,7 +25,7 @@ import {
   textSchema,
   upscaleSchema,
   visionSchema,
-} from '@ai-platform/shared';
+} from '@api-platform/shared';
 import { execute, registry } from '../../services/ai.service';
 import { enqueue, enqueueAndWait, enqueueWithTiming, QueueName, queueStats, queueTiming } from '../../services/queue.service';
 import { prisma } from '../../lib/prisma';
@@ -490,7 +490,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   app.get('/models', { schema: { tags: ['v1'] } }, async (req) => {
     const { provider } = req.query as { provider?: string };
     const openAiData = [
-      { id: 'auto', object: 'model', created: 1700000000, owned_by: 'ai-platform' },
+      { id: 'auto', object: 'model', created: 1700000000, owned_by: 'api-platform' },
       { id: 'qwen2.5:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
       { id: 'llama3:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
       { id: 'deepseek-r1:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },

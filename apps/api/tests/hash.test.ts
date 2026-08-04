@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cacheKey, canonicalStringify, hashApiKey, sha256 } from '@ai-platform/shared';
+import { cacheKey, canonicalStringify, hashApiKey, sha256 } from '@api-platform/shared';
 
 describe('canonicalStringify', () => {
   it('ordena chaves de forma deterministica', () => {

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ====================================================
-# AI Platform - Instalacao Linux / macOS
+# API Platform - Instalacao Linux / macOS
 # Requisitos: Docker + Docker Compose plugin
 # ====================================================
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo '== AI Platform - instalacao (Linux/macOS) =='
+echo '== API Platform - instalacao (Linux/macOS) =='
 
 if ! command -v docker >/dev/null 2>&1; then
   echo 'Docker nao encontrado. Instale: https://docs.docker.com/engine/install/' >&2

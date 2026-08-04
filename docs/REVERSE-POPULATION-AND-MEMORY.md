@@ -2,10 +2,10 @@
 
 ## O que foi implementado
 
-A AI Platform agora suporta os dois sentidos da integração:
+A API Platform agora suporta os dois sentidos da integração:
 
 1. **Entrada normal (push):** o projeto chama `POST /v1/jobs/batch`.
-2. **Entrada reversa (pull):** a AI Platform chama periodicamente o sistema de origem, pergunta se existe trabalho e enfileira o lote retornado.
+2. **Entrada reversa (pull):** a API Platform chama periodicamente o sistema de origem, pergunta se existe trabalho e enfileira o lote retornado.
 3. **Retorno (callback):** ao concluir ou falhar, a fila `webhook` envia o resultado assinado ao `resultUrl` do conector.
 
 O poller nunca chama um LLM para decidir se deve buscar trabalho. Ele usa capacidade real das filas, locks Redis e limites determinísticos, portanto não gasta tokens e não cria loops.
@@ -57,8 +57,8 @@ A plataforma envia `POST` com:
 
 Headers importantes:
 
-- `x-ai-platform-event: population.requested`
-- `x-ai-platform-signature: sha256=<HMAC_SHA256(secret, corpo_raw)>`
+- `x-api-platform-event: population.requested`
+- `x-api-platform-signature: sha256=<HMAC_SHA256(secret, corpo_raw)>`
 
 O sistema de origem responde:
 
@@ -83,7 +83,7 @@ O sistema de origem responde:
 
 `sourceJobId` deve ser estável. Se a origem repetir o mesmo item, a deduplicação impede processamento duplicado. Tipos recursivos como `webhook` e `reverse` não são aceitos.
 
-Se `REVERSE_REQUIRE_RESPONSE_SIGNATURE=true`, a origem também deve assinar o corpo bruto da resposta no header `x-ai-platform-signature`.
+Se `REVERSE_REQUIRE_RESPONSE_SIGNATURE=true`, a origem também deve assinar o corpo bruto da resposta no header `x-api-platform-signature`.
 
 ## Contrato do resultUrl
 
@@ -143,11 +143,11 @@ Feedback rejeitado reduz a confiança da rota. Memórias nunca são compartilhad
 ## Prompt para integrar no Lovable
 
 ```text
-Implemente duas Edge Functions seguras para integrar com a AI Platform.
+Implemente duas Edge Functions seguras para integrar com a API Platform.
 
 1. POST /api/ai/pending:
 - leia o corpo bruto;
-- valide x-ai-platform-signature com HMAC-SHA256 e AI_PLATFORM_REVERSE_SECRET;
+- valide x-api-platform-signature com HMAC-SHA256 e api_platform_REVERSE_SECRET;
 - use cursor e limit recebidos;
 - busque itens pendentes no banco com lock/claim transacional;
 - responda {cursor, hasMore, jobs};
@@ -162,6 +162,6 @@ Implemente duas Edge Functions seguras para integrar com a AI Platform.
 - torne a operação idempotente por body.jobId + body.event;
 - responda HTTP 2xx somente depois do commit no banco.
 
-Use secrets do servidor, nunca exponha AI_PLATFORM_REVERSE_SECRET no frontend.
-Não faça polling no navegador. A AI Platform controla a população e os callbacks.
+Use secrets do servidor, nunca exponha api_platform_REVERSE_SECRET no frontend.
+Não faça polling no navegador. A API Platform controla a população e os callbacks.
 ```

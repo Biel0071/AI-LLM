@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ProviderCircuitBreaker } from '@ai-platform/shared';
+import { ProviderCircuitBreaker } from '@api-platform/shared';
 
 describe('ProviderCircuitBreaker', () => {
   it('abre somente depois do limite de falhas', () => {

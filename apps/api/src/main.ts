@@ -27,7 +27,7 @@ async function main(): Promise<void> {
 
   await app.listen({ port: env.PORT, host: env.HOST });
   startReversePoller();
-  logger.info(`AI Platform API rodando em http://${env.HOST}:${env.PORT} (docs em /docs)`);
+  logger.info(`API Platform API rodando em http://${env.HOST}:${env.PORT} (docs em /docs)`);
 }
 
 main().catch((err) => {

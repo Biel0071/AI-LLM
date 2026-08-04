@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deterministicTextQuality, pickModel, resolveAllowedCategory } from '@ai-platform/shared';
+import { deterministicTextQuality, pickModel, resolveAllowedCategory } from '@api-platform/shared';
 
 describe('quality gate', () => {
   it('rejects unresolved placeholders even when JSON is syntactically valid', () => {

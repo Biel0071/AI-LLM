@@ -3,7 +3,7 @@ import {
   executionMemoryContext,
   executionMemoryHash,
   type ExecutionMemoryChoice,
-} from '@ai-platform/shared';
+} from '@api-platform/shared';
 import { logger } from '../lib/logger';
 import { prisma } from '../lib/prisma';
 

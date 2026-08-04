@@ -2,7 +2,7 @@ import { Queue, QueueEvents } from 'bullmq';
 import { env } from '../config/env';
 import { createBullConnection } from '../lib/redis';
 import { prisma } from '../lib/prisma';
-import { cacheKey } from '@ai-platform/shared';
+import { cacheKey } from '@api-platform/shared';
 
 export const QUEUE_NAMES = [
   'text',

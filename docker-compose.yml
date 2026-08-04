@@ -1,4 +1,4 @@
-name: ai-platform
+name: api-platform
 
 services:
   postgres:
@@ -6,15 +6,15 @@ services:
     restart: unless-stopped
     mem_limit: ${MEM_POSTGRES:-512m}
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-aiplatform}
+      POSTGRES_USER: ${POSTGRES_USER:-apiplatform}
       # Rotacionar em producao: defina POSTGRES_PASSWORD no .env e rode ALTER
       # USER no banco existente (a var so cria a senha na 1a init de volume).
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiplatform}
-      POSTGRES_DB: ${POSTGRES_DB:-aiplatform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apiplatform}
+      POSTGRES_DB: ${POSTGRES_DB:-apiplatform}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U aiplatform']
+      test: ['CMD-SHELL', 'pg_isready -U apiplatform']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -52,7 +52,7 @@ services:
     mem_limit: ${MEM_API:-768m}
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-aiplatform}:${POSTGRES_PASSWORD:-aiplatform}@postgres:5432/${POSTGRES_DB:-aiplatform}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-apiplatform}:${POSTGRES_PASSWORD:-apiplatform}@postgres:5432/${POSTGRES_DB:-apiplatform}?schema=public
       REDIS_URL: redis://redis:6379
       # Dentro do container, "localhost" nao alcanca servicos do host:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL_DOCKER:-http://host.docker.internal:11434}
@@ -87,7 +87,7 @@ services:
     mem_limit: ${MEM_WORKER:-768m}
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-aiplatform}:${POSTGRES_PASSWORD:-aiplatform}@postgres:5432/${POSTGRES_DB:-aiplatform}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-apiplatform}:${POSTGRES_PASSWORD:-apiplatform}@postgres:5432/${POSTGRES_DB:-apiplatform}?schema=public
       REDIS_URL: redis://redis:6379
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL_DOCKER:-http://host.docker.internal:11434}
       COMFYUI_BASE_URL: ${COMFYUI_BASE_URL_DOCKER:-http://host.docker.internal:8188}
@@ -104,7 +104,7 @@ services:
     healthcheck:
       # Um processo vivo pode estar com o event loop travado. O worker grava
       # este heartbeat a cada 30s; se envelhecer, o Docker reinicia o container.
-      test: ['CMD', 'node', '-e', "const fs=require('fs');const p='/tmp/aiplatform-worker-heartbeat';const age=Date.now()-fs.statSync(p).mtimeMs;if(age>90000)process.exit(1)"]
+      test: ['CMD', 'node', '-e', "const fs=require('fs');const p='/tmp/apiplatform-worker-heartbeat';const age=Date.now()-fs.statSync(p).mtimeMs;if(age>90000)process.exit(1)"]
       interval: 15s
       timeout: 5s
       retries: 4

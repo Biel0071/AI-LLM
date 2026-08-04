@@ -1,7 +1,7 @@
 {
-  "name": "@ai-platform/sdk",
+  "name": "@api-platform/sdk",
   "version": "1.0.0",
-  "description": "SDK TypeScript oficial da AI Platform",
+  "description": "SDK TypeScript oficial da API Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

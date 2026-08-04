@@ -1,16 +1,16 @@
-# Status de Deploy — AI Platform (produção)
+# Status de Deploy — API Platform (produção)
 
 ## Gateway na VPS-B (.215) — TLS ativo
 
-O gateway ai-platform roda na VPS-B (`209.50.241.215`, 16GB, AlmaLinux, tier `power`).
+O gateway api-platform roda na VPS-B (`209.50.241.215`, 16GB, AlmaLinux, tier `power`).
 O acesso de outros projetos (FÊNIX na `.22`) agora é **HTTPS com certificado válido**,
 não mais HTTP em claro.
 
 ### Endereço para o FÊNIX
 
 ```
-GRG_AIPLATFORM_URL=https://209-50-241-215.sslip.io:8443
-GRG_AIPLATFORM_KEY=<API key ap_... do gateway>
+GRG_apiplatform_URL=https://209-50-241-215.sslip.io:8443
+GRG_apiplatform_KEY=<API key ap_... do gateway>
 ```
 
 - **NÃO** use mais `http://209.50.241.215:3000` — a porta 3000 agora escuta só em
@@ -24,8 +24,8 @@ GRG_AIPLATFORM_KEY=<API key ap_... do gateway>
 FÊNIX (.22) --HTTPS--> Caddy :8443 (TLS, cert LE) --http--> 127.0.0.1:3000 (gateway)
 ```
 
-- **Caddy** (container `ai-platform-caddy`, host network) termina o TLS na porta 8443,
-  proxia para o gateway em loopback. Config em `/opt/ai-platform-tls/Caddyfile`.
+- **Caddy** (container `api-platform-caddy`, host network) termina o TLS na porta 8443,
+  proxia para o gateway em loopback. Config em `/opt/api-platform-tls/Caddyfile`.
 - **Isolamento em duas camadas:** o Caddyfile só aceita `remote_ip 209.50.241.22`
   (403 para o resto), e o firewalld só libera a 8443 para a origem `.22` (o resto cai
   pela política default-deny da zona `public`).
@@ -44,7 +44,7 @@ FÊNIX (.22) --HTTPS--> Caddy :8443 (TLS, cert LE) --http--> 127.0.0.1:3000 (gat
 
 - **Renovação do cert:** o certbot foi rodado via container uma vez. A renovação
   automática ainda **não** está agendada — antes de 2026-10-27, configurar um cron/timer
-  que rode `certbot renew` (container) e recarregue o Caddy (`docker exec ai-platform-caddy
+  que rode `certbot renew` (container) e recarregue o Caddy (`docker exec api-platform-caddy
   caddy reload` ou restart).
 - **Boot:** o Caddy sobe com `--restart unless-stopped`. Confirmar que ele reaplica após
   reboot da VPS (não testado neste ciclo).

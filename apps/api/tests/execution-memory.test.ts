@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseExecutionMemory, executionMemoryContext, executionMemoryHash } from '@ai-platform/shared';
+import { chooseExecutionMemory, executionMemoryContext, executionMemoryHash } from '@api-platform/shared';
 
 describe('execution memory', () => {
   it('does not include customer prompt or image contents in its context', () => {

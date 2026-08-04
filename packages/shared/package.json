@@ -1,7 +1,7 @@
 {
-  "name": "@ai-platform/shared",
+  "name": "@api-platform/shared",
   "version": "1.0.0",
-  "description": "Tipos, schemas, providers e utilitarios compartilhados da AI Platform",
+  "description": "Tipos, schemas, providers e utilitarios compartilhados da API Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

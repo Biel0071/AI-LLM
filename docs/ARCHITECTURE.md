@@ -4,7 +4,7 @@
 
 ```
                        ┌─────────────────────────────────────────────┐
-                       │                 AI PLATFORM                 │
+                       │                 API Platform                 │
  Lovable / SaaS ──────▶│  Fastify API ── Auth ── Rate limit ── Zod   │
  (x-api-key)           │        │                                    │
                        │        ├─▶ Cache Service (Redis + Postgres) │

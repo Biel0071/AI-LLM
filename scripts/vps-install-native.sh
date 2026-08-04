@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ====================================================
-# AI Platform - Preparacao nativa da VPS (swap + modelos ComfyUI)
+# API Platform - Preparacao nativa da VPS (swap + modelos ComfyUI)
 # ====================================================
 # Ollama e ComfyUI agora rodam DENTRO de containers Docker (perfil "vps"
 # do docker-compose.yml), nao mais nativos no host - isso evita de vez os

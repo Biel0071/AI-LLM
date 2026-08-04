@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { fail } from '@ai-platform/shared';
+import { fail } from '@api-platform/shared';
 import { execute, registry, reloadRegistry } from '../../services/ai.service';
 import { listProviderConfigs, saveProviderConfig } from '../../services/provider-config.service';
 import { prisma } from '../../lib/prisma';

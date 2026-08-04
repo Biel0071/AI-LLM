@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPrivateAddress, reverseSourceResponseSchema } from '@ai-platform/shared';
+import { isPrivateAddress, reverseSourceResponseSchema } from '@api-platform/shared';
 
 describe('reverse population protocol', () => {
   it('accepts bounded jobs with source ids', () => {

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { fail } from '@ai-platform/shared';
+import { fail } from '@api-platform/shared';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { overviewRoutes } from './overview';

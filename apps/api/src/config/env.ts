@@ -10,7 +10,7 @@ const envSchema = z.object({
   REDIS_URL: z.string().default('redis://localhost:6379'),
 
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 chars'),
-  ADMIN_EMAIL: z.string().email().default('admin@aiplatform.local'),
+  ADMIN_EMAIL: z.string().email().default('admin@apiplatform.local'),
   ADMIN_PASSWORD: z.string().min(6).default('admin123'),
   DEFAULT_API_KEY: z.string().optional(),
 
@@ -46,7 +46,7 @@ const envSchema = z.object({
     .default('true')
     .transform((v) => v !== 'false'),
 
-  QUEUE_PREFIX: z.string().default('aiplatform'),
+  QUEUE_PREFIX: z.string().default('apiplatform'),
   JOB_WAIT_TIMEOUT_MS: z.coerce.number().default(180_000),
   WORKER_CONCURRENCY: z.coerce.number().default(4),
   SYNC_TEXT_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),

@@ -1,6 +1,6 @@
 import jwt from '@fastify/jwt';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { hashApiKey } from '@ai-platform/shared';
+import { hashApiKey } from '@api-platform/shared';
 import { env } from '../config/env';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
@@ -47,7 +47,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       return;
     }
     const keyHash = hashApiKey(key);
-    const cacheId = `aiplatform:apikey:v2:${keyHash}`;
+    const cacheId = `apiplatform:apikey:v2:${keyHash}`;
     let ctx: AuthContext | null = null;
     const cached = await redis.get(cacheId).catch(() => null);
     if (cached) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AdaptiveJobScheduler, decideConcurrency, parseProcMeminfo } from '@ai-platform/shared';
+import { AdaptiveJobScheduler, decideConcurrency, parseProcMeminfo } from '@api-platform/shared';
 
 describe('adaptive resource controller', () => {
   it('reads host memory and swap from procfs', () => {

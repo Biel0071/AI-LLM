@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ====================================================
-# AI Platform - Mescla o LCM-LoRA no checkpoint permanentemente
+# API Platform - Mescla o LCM-LoRA no checkpoint permanentemente
 # ====================================================
 # Reaplicar o LoRA via node LoraLoader a cada geracao custava ~30s fixos
 # de overhead por chamada (patch dos pesos do UNet), mesmo com poucos

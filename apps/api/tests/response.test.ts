@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fail, ok } from '@ai-platform/shared';
+import { fail, ok } from '@api-platform/shared';
 
 describe('envelope padrao', () => {
   it('resposta de sucesso segue o contrato', () => {

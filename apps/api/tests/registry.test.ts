@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRegistryFromEnv, ProviderRegistry, OllamaProvider } from '@ai-platform/shared';
+import { createRegistryFromEnv, ProviderRegistry, OllamaProvider } from '@api-platform/shared';
 
 describe('ProviderRegistry', () => {
   it('registra providers a partir do ambiente', () => {

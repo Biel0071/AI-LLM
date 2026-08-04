@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { jobSchema, textSchema } from '@ai-platform/shared';
+import { jobSchema, textSchema } from '@api-platform/shared';
 
 describe('large workload and reverse callback contracts', () => {
   it('defaults text admission to auto', () => {

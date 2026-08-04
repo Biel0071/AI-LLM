@@ -1,13 +1,13 @@
-# AI Platform SDK (TypeScript)
+# API Platform SDK (TypeScript)
 
 ```bash
 npm run build -w packages/sdk-ts
 ```
 
 ```ts
-import { AIPlatform } from '@ai-platform/sdk';
+import { apiplatform } from '@api-platform/sdk';
 
-const ai = new AIPlatform({ baseUrl: 'http://localhost:3000', apiKey: 'ap_...' });
+const ai = new apiplatform({ baseUrl: 'http://localhost:3000', apiKey: 'ap_...' });
 
 const text = await ai.text({ prompt: 'Descreva um tenis de corrida azul' });
 console.log(text.result.text);

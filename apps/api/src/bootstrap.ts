@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
-import { hashApiKey } from '@ai-platform/shared';
+import { hashApiKey } from '@api-platform/shared';
 import { env } from './config/env';
 import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
@@ -52,7 +52,7 @@ export async function bootstrap(): Promise<void> {
   // Provider config padrao para Ollama (Open-Source Local)
   const ollamaConfig = await prisma.providerConfig.findUnique({ where: { name: 'ollama' } });
   if (!ollamaConfig) {
-    const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://ai-platform-ollama-1:11434';
+    const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://api-platform-ollama-1:11434';
     await prisma.providerConfig.create({
       data: {
         name: 'ollama',

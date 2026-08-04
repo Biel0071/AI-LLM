@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ====================================================
-# AI Platform - Deploy em VPS COMPARTILHADA (Ubuntu/Debian/RHEL)
+# API Platform - Deploy em VPS COMPARTILHADA (Ubuntu/Debian/RHEL)
 # Instala Docker se necessario, configura .env e sobe a stack - tudo em
 # portas que NAO conflitam com sistemas ja rodando na mesma VPS (ex:
 # ZAPAI usando 4025/5432/6379/80/443/2090).
@@ -27,15 +27,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo '== AI Platform - deploy VPS (multi-tenant, nao mexe em outros sistemas) =='
+echo '== API Platform - deploy VPS (multi-tenant, nao mexe em outros sistemas) =='
 
 # -- Deteccao de hardware e escolha de tier --------------------------------
-# RAM total em MB e nucleos de CPU. Override manual: AI_PLATFORM_TIER=lite|power
+# RAM total em MB e nucleos de CPU. Override manual: api_platform_TIER=lite|power
 detect_ram_mb() { awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0; }
 detect_cpus() { nproc 2>/dev/null || echo 1; }
 RAM_MB=$(detect_ram_mb)
 CPUS=$(detect_cpus)
-TIER="${AI_PLATFORM_TIER:-}"
+TIER="${api_platform_TIER:-}"
 if [ -z "$TIER" ]; then
   # >=14GB de RAM E >=5 vCPU => power. Abaixo disso, lite (seguro na VPS fraca).
   if [ "$RAM_MB" -ge 14000 ] && [ "$CPUS" -ge 5 ]; then TIER=power; else TIER=lite; fi
@@ -271,25 +271,25 @@ docker compose --profile vps up -d --build || true
 # 4b. Watchdog do host: Docker nao reinicia um container apenas por estar
 # unhealthy. O timer verifica a cada minuto e reinicia somente o componente
 # afetado, sem derrubar o restante da plataforma.
-install -m 0755 scripts/vps-watchdog.sh /usr/local/sbin/ai-platform-watchdog
-cat >/etc/systemd/system/ai-platform-watchdog.service <<'EOF'
+install -m 0755 scripts/vps-watchdog.sh /usr/local/sbin/api-platform-watchdog
+cat >/etc/systemd/system/api-platform-watchdog.service <<'EOF'
 [Unit]
-Description=AI Platform health recovery
+Description=API Platform health recovery
 After=docker.service
 Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/ai-platform-watchdog
+ExecStart=/usr/local/sbin/api-platform-watchdog
 EOF
-cat >/etc/systemd/system/ai-platform-watchdog.timer <<'EOF'
+cat >/etc/systemd/system/api-platform-watchdog.timer <<'EOF'
 [Unit]
-Description=Run AI Platform health recovery every minute
+Description=Run API Platform health recovery every minute
 
 [Timer]
 # OnBootSec baixo: o watchdog tambem reaplica o firewall da 3000, entao a
 # primeira passada precisa ser cedo (o Docker recria a chain DOCKER-USER
-# vazia no boot - ver ai-platform-firewall.service, que fecha a janela
+# vazia no boot - ver api-platform-firewall.service, que fecha a janela
 # principal; este timer e a rede de seguranca continua).
 OnBootSec=20s
 OnUnitActiveSec=1min
@@ -304,23 +304,23 @@ EOF
 # sobe no boot, reabrindo a 3000 por ~2min ate o timer do watchdog rodar
 # (janela de exposicao medida). Este oneshot roda LOGO APOS o docker.service,
 # aplicando a regra antes que a janela importe. Reusa o watchdog (idempotente).
-cat >/etc/systemd/system/ai-platform-firewall.service <<'EOF'
+cat >/etc/systemd/system/api-platform-firewall.service <<'EOF'
 [Unit]
-Description=AI Platform port-3000 firewall (apply on boot, after Docker)
+Description=API Platform port-3000 firewall (apply on boot, after Docker)
 After=docker.service
 Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/ai-platform-watchdog
+ExecStart=/usr/local/sbin/api-platform-watchdog
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable --now ai-platform-watchdog.timer
-systemctl enable ai-platform-firewall.service
+systemctl enable --now api-platform-watchdog.timer
+systemctl enable api-platform-firewall.service
 
 # 5. Baixa os modelos dentro do container ollama (a primeira vez que sobe,
 # o volume esta vazio). Os 4 juntos cabem em disco tranquilo (~4GB) - o
@@ -347,11 +347,11 @@ docker compose --profile vps up -d api worker || true
 # zonas do firewalld, entao "bloquear no firewalld" nao pega trafego
 # publicado por container. DOCKER-USER e avaliada antes das regras do proprio
 # Docker - e o unico ponto confiavel pra filtrar porta publicada. Regra:
-# aceita 3000 de loopback e das origens autorizadas (AI_PLATFORM_ALLOWED_SOURCES,
+# aceita 3000 de loopback e das origens autorizadas (api_platform_ALLOWED_SOURCES,
 # CSV de IPs/CIDRs - ex: o IP do FENIX no Comando 2), DROPA o resto. Idempotente.
 setup_gateway_firewall() {
   command -v iptables >/dev/null 2>&1 || { echo '  AVISO: iptables ausente, pulei isolamento DOCKER-USER'; return 0; }
-  local MARK='AI_PLATFORM_GW_3000'
+  local MARK='api_platform_GW_3000'
   # Remove regras anteriores deste projeto (idempotencia) antes de reinserir.
   while iptables -L DOCKER-USER -n --line-numbers 2>/dev/null | grep -q "$MARK"; do
     local ln; ln=$(iptables -L DOCKER-USER -n --line-numbers 2>/dev/null | grep "$MARK" | head -1 | awk '{print $1}')
@@ -360,7 +360,7 @@ setup_gateway_firewall() {
   # Loopback e a propria VPS sempre podem.
   iptables -I DOCKER-USER -p tcp --dport 3000 -s 127.0.0.1 -m comment --comment "$MARK" -j RETURN
   # Origens autorizadas (CSV no .env). Vazio = so loopback alcanca a 3000.
-  local sources; sources=$(grep -E '^AI_PLATFORM_ALLOWED_SOURCES=' .env 2>/dev/null | cut -d= -f2- | tr ',' ' ')
+  local sources; sources=$(grep -E '^api_platform_ALLOWED_SOURCES=' .env 2>/dev/null | cut -d= -f2- | tr ',' ' ')
   for src in $sources; do
     [ -n "$src" ] && iptables -I DOCKER-USER -p tcp --dport 3000 -s "$src" -m comment --comment "$MARK" -j RETURN
   done
@@ -382,7 +382,7 @@ echo
 echo '== Deploy concluido =='
 echo "  Tier aplicado: ${TIER}  (${RAM_MB}MB RAM, ${CPUS} vCPU)"
 echo "  API:       http://${PUBLIC_IP}:3000  (fechada na internet via DOCKER-USER;"
-echo "             libere origens em AI_PLATFORM_ALLOWED_SOURCES no .env)"
+echo "             libere origens em api_platform_ALLOWED_SOURCES no .env)"
 echo "  Dashboard: bind 127.0.0.1:8080 (so local; use proxy TLS pra expor)"
 echo "  Swagger:   /docs DESLIGADO em producao (DOCS_ENABLED=false)"
 echo "  Postgres:  bind 127.0.0.1:${PG_PORT} (nunca exposto)"
@@ -391,11 +391,11 @@ echo '  Ollama:    container "ollama", so na rede interna do Docker'
 echo '  ComfyUI:   container "comfyui", so na rede interna do Docker'
 echo
 echo '== Apontamento dos outros projetos (FENIX / Lovable) =='
-echo '  A 3000 so aceita as origens listadas em AI_PLATFORM_ALLOWED_SOURCES'
+echo '  A 3000 so aceita as origens listadas em api_platform_ALLOWED_SOURCES'
 echo '  (CSV de IPs/CIDRs no .env). Adicione o IP do cliente e rode o deploy'
 echo '  de novo, ou a regra DOCKER-USER manualmente. Secrets server-side:'
-echo "    AI_PLATFORM_BASE_URL=http://${PUBLIC_IP}:3000"
-echo "    AI_PLATFORM_API_KEY=${API_KEY_VALUE}"
+echo "    api_platform_BASE_URL=http://${PUBLIC_IP}:3000"
+echo "    api_platform_API_KEY=${API_KEY_VALUE}"
 echo '  Guia: docs/LOVABLE-PRODUCTION-INTEGRATION.md'
 echo
 echo 'Recomendado: proxy TLS na frente (Traefik/Caddy/nginx + certbot) e um'

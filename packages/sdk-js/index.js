@@ -1,21 +1,21 @@
 /**
- * AI Platform SDK (JavaScript puro, zero dependencias)
+ * API Platform SDK (JavaScript puro, zero dependencias)
  * Funciona em Node 18+, browsers e apps Lovable.
  *
- *   import { AIPlatform } from '@ai-platform/sdk-js';
- *   const ai = new AIPlatform({ baseUrl: 'http://localhost:3000', apiKey: 'ap_...' });
+ *   import { apiplatform } from '@api-platform/sdk-js';
+ *   const ai = new apiplatform({ baseUrl: 'http://localhost:3000', apiKey: 'ap_...' });
  *   const { result } = await ai.text({ prompt: 'Descreva um tenis de corrida' });
  */
-export class AIPlatformError extends Error {
+export class apiplatformError extends Error {
   constructor(code, message, status) {
     super(message);
-    this.name = 'AIPlatformError';
+    this.name = 'apiplatformError';
     this.code = code;
     this.status = status;
   }
 }
 
-export class AIPlatform {
+export class apiplatform {
   constructor({ baseUrl, apiKey, timeoutMs = 300000 }) {
     this.baseUrl = String(baseUrl).replace(/\/$/, '');
     this.apiKey = apiKey;
@@ -34,7 +34,7 @@ export class AIPlatform {
       });
       const data = await res.json();
       if (!res.ok || data?.success === false) {
-        throw new AIPlatformError(
+        throw new apiplatformError(
           data?.error?.code ?? 'HTTP_ERROR',
           data?.error?.message ?? `HTTP ${res.status}`,
           res.status,
@@ -69,8 +69,8 @@ export class AIPlatform {
       if (status.status === 'completed' || status.status === 'failed') return status;
       await new Promise((r) => setTimeout(r, pollMs));
     }
-    throw new AIPlatformError('TIMEOUT', `job ${jobId} did not finish in time`);
+    throw new apiplatformError('TIMEOUT', `job ${jobId} did not finish in time`);
   }
 }
 
-export default AIPlatform;
+export default apiplatform;
