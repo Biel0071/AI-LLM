@@ -18,7 +18,7 @@ describe('ProviderRegistry', () => {
     const registry = createRegistryFromEnv({
       OLLAMA_BASE_URL: 'http://localhost:11434',
       OPENAI_API_KEY: 'sk-test',
-      DEFAULT_TEXT_PROVIDER: 'openai',
+      DEFAULT_CHAT_PROVIDER: 'openai',
     });
     expect(registry.resolve('chat').name).toBe('openai');
     expect(registry.resolve('chat', 'ollama').name).toBe('ollama');
