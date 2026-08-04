@@ -19,11 +19,22 @@ Estado de prontidão para produção Enterprise. `[x]` = feito com evidência ·
 
 ## Estabilização de código (MODO PRODUCT HARDENING)
 
-- [ ] Eliminar `mockMetrics` do registry — substituir por métricas reais (P1, `KNOWN_ISSUES.md`).
-- [ ] Testar `calculateScore` — hoje sem cobertura.
-- [ ] Stream parsing no provider OpenAI-compatível (P2).
-- [ ] Multipart upload no provider OpenAI-compatível (P2, confirmar se usado).
-- [ ] Working tree limpo (baseline) — ~70 arquivos não commitados bloqueiam o hardening.
+- [x] Working tree consolidado como baseline reproduzível no GitHub (commit b220c7c+).
+      Prova: local provado superset da produção; git pull na VPS = fast-forward.
+- [x] Build Docker verde ponta a ponta — shared+dashboard+api+worker compilam, 41 testes
+      passam. Corrigiu: @types/node no shared, apps/dashboard como workspace, teste
+      registry obsoleto (text→chat), 19 erros TS do dashboard Vite, /health do nginx.
+- [x] Produção roda o baseline (as 3 versões viraram 1) — dados migrados do stack antigo
+      (ai-platform → api-platform) sem perda: ApiKey=1, Tenant=1, Job=6, modelos (28G) copiados.
+      Prova: health ONLINE, geração real 1.2s, HTTPS da .22 = 200.
+- [x] Dashboard healthy — /health no nginx corrigido (era restart-loop). Prova: {"status":"ok"}.
+- [x] TLS/Caddy restaurado (tinha caído) — HTTPS da .22 com cert válido = 200.
+- [ ] Eliminar `mockMetrics` do registry — usar métricas reais com fallback não-zerado
+      (decisão do usuário). P1 pendente, `KNOWN_ISSUES.md`.
+- [ ] `ssl:true` do /health é hardcoded no app.js — não reflete o Caddy real (mock a corrigir).
+- [ ] Testar `calculateScore` — sem cobertura.
+- [ ] Stream parsing / multipart no provider OpenAI-compatível (P2).
+- [ ] `defaultProviders` hardcoded no dashboard Providers.tsx (fallback fictício) — FASE 5.
 
 ## Infra / Deploy
 
