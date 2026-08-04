@@ -556,8 +556,66 @@
     },
     async projects() {
       const [{ projects }, { tenants }] = await Promise.all([api('/admin/projects'), api('/admin/tenants')]);
-      content().innerHTML=`<h1>Projetos</h1><p class="muted">Cadastre um projeto e depois gere sua API Key na etapa seguinte.</p><div class="card section"><h2>Novo projeto</h2><div class="form-grid"><label>Nome <input id="pr-name" /></label><label>Tenant <select id="pr-tenant">${tenants.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select></label><label>Descrição <input id="pr-desc" /></label><label>Domínio <input id="pr-domain" placeholder="meuprojeto.lovable.app" /></label></div><button id="pr-create">Criar projeto</button><span id="pr-status" class="muted"></span></div>${table(['Projeto','Tenant','Descrição','Domínio','Criado'],projects.map(p=>[esc(p.name),esc(p.tenant?.name||'—'),esc(p.description||'—'),esc(p.domain||'—'),fmtDate(p.createdAt)]))}`;
-      $('#pr-create').addEventListener('click',async()=>{const s=$('#pr-status');try{await api('/admin/projects',{method:'POST',body:{name:$('#pr-name').value,tenantId:$('#pr-tenant').value,description:$('#pr-desc').value,domain:$('#pr-domain').value}});s.textContent='Projeto criado. Agora gere uma API Key.';s.className='ok';setTimeout(()=>pages.projects(),700);}catch(e){s.textContent=e.message;s.className='error';}});
+      // URL absoluta (origin real) para o snippet/endpoint funcionar quando
+      // copiado para um projeto externo. API='' serve so pra chamadas do proprio
+      // dashboard (mesmo host); o cliente externo precisa do host completo.
+      const base = location.origin;
+      const endpoints = ['/v1/text', '/v1/chat', '/v1/image', '/v1/vision', '/v1/embed'];
+      content().innerHTML=`<h1>Projetos</h1><p class="muted">Crie um projeto e receba na mesma tela tudo para conectar: ID, endpoint, chave e snippet.</p>
+        <div class="wizard-steps"><span class="active">1 Criar</span><span>2 Chave</span><span>3 Conectar</span></div>
+        <div class="card section"><h2>Novo projeto</h2><div class="form-grid"><label>Nome <input id="pr-name" /></label><label>Tenant <select id="pr-tenant">${tenants.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select></label><label>Descrição <input id="pr-desc" /></label><label>Domínio <input id="pr-domain" placeholder="meuprojeto.lovable.app" /></label></div><button id="pr-create">Criar projeto</button><span id="pr-status" class="muted"></span></div>
+        <div id="pr-connect"></div>
+        ${table(['Projeto','Tenant','Descrição','Domínio','Criado'],projects.map(p=>[esc(p.name),esc(p.tenant?.name||'—'),esc(p.description||'—'),esc(p.domain||'—'),fmtDate(p.createdAt)]))}`;
+      const bindCopy = (btnId, value, done = 'Copiado!') => { const b = $('#' + btnId); if (b) b.onclick = async () => { await navigator.clipboard.writeText(value); b.textContent = done; }; };
+      $('#pr-create').addEventListener('click', async () => {
+        const s = $('#pr-status'); const btn = $('#pr-create'); btn.disabled = true;
+        s.textContent = 'Criando projeto...'; s.className = 'muted';
+        const projectName = $('#pr-name').value || 'sem-nome';
+        const tenantId = $('#pr-tenant').value;
+        let project;
+        try {
+          const created = await api('/admin/projects', { method: 'POST', body: { name: projectName, tenantId, description: $('#pr-desc').value, domain: $('#pr-domain').value } });
+          project = created.project;
+        } catch (e) { s.textContent = e.message; s.className = 'error'; btn.disabled = false; return; }
+        s.textContent = 'Projeto criado. Gerando API Key...'; s.className = 'ok';
+        let generatedKey;
+        try {
+          const keyData = await api('/admin/api-keys', { method: 'POST', body: { name: `${projectName}-key`, tenantId: project.tenantId, projectId: project.id, environment: 'live', scopes: ['text','chat','image','vision','embed'] } });
+          generatedKey = keyData.key;
+        } catch (e) {
+          $('#pr-connect').innerHTML = `<div class="card section key-created"><strong>Projeto criado</strong><p class="muted">Project ID: <code>${esc(project.id)}</code></p><p class="error">Não foi possível gerar a chave automaticamente: ${esc(e.message)}</p><a class="button-link" href="#/keys">Gerar chave manualmente</a></div>`;
+          s.textContent = ''; btn.disabled = false;
+          return;
+        }
+        s.textContent = 'Pronto! Projeto criado e chave gerada.'; s.className = 'ok';
+        const snippet = `fetch('${base}/v1/text', {\n  method: 'POST',\n  headers: { 'content-type': 'application/json', 'x-api-key': '${generatedKey}' },\n  body: JSON.stringify({ prompt: 'Olá!' })\n})`;
+        $('#pr-connect').innerHTML = `<div class="card section key-created">
+          <h2>Projeto pronto — conecte agora</h2>
+          <p><strong>Project ID:</strong> <code id="pr-id">${esc(project.id)}</code> <button id="pr-copy-id" class="ghost">Copiar ID</button></p>
+          <p><strong>Endpoint de apontamento:</strong> <code>${esc(base)}/v1/text</code></p>
+          <p class="muted">Outras rotas: ${endpoints.slice(1).map(e=>`<code>${esc(e)}</code>`).join(' · ')}</p>
+          <p><strong>API Key</strong> — <span class="error">copie agora, não será exibida novamente</span></p>
+          <pre class="code" id="pr-key">${esc(generatedKey)}</pre><button id="pr-copy-key" class="ghost">Copiar chave</button>
+          <h2>Snippet pronto</h2>
+          <pre class="code" id="pr-snippet">${esc(snippet)}</pre><button id="pr-copy-snippet" class="ghost">Copiar snippet</button>
+          <div class="toolbar" style="margin-top:1rem"><button id="pr-test">Testar conexão agora</button><span id="pr-test-status" class="muted"></span></div>
+        </div>`;
+        bindCopy('pr-copy-id', project.id, 'ID copiado!');
+        bindCopy('pr-copy-key', generatedKey, 'Chave copiada!');
+        bindCopy('pr-copy-snippet', snippet, 'Snippet copiado!');
+        $('#pr-test').onclick = async () => {
+          const st = $('#pr-test-status'); const tb = $('#pr-test'); tb.disabled = true;
+          st.textContent = 'Testando...'; st.className = 'muted';
+          try {
+            const r = await fetch(API + '/v1/text', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': generatedKey }, body: JSON.stringify({ prompt: 'ping' }) });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d?.error?.message || 'Chave recusada');
+            st.textContent = `Conexão validada, projeto pronto para uso. ${d.model ? '(' + d.model + ') ' : ''}${(d.result?.text || d.text || '').slice(0, 80)}`; st.className = 'ok';
+          } catch (e) { st.textContent = e.message; st.className = 'error'; }
+          finally { tb.disabled = false; }
+        };
+        btn.disabled = false;
+      });
     },
 
     async lovable() {

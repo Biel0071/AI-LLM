@@ -69,12 +69,14 @@ export async function buildApp(): Promise<FastifyInstance> {
       checks.redis = false;
     }
 
-    // Extended Infra Checks (simulated/inferred for now based on Docker environment)
+    // Extended Infra Checks. ssl reflete a presença real de um proxy TLS na
+    // frente (o deploy seta SSL_ENABLED=true quando o Caddy sobe), não uma
+    // inferência por NODE_ENV. docker/icp seguem env explícita quando houver.
     checks.dashboard = true;
     checks.mongo = 'N/A';
-    checks.docker = process.env.DOCKER_ENV === 'true' || true;
-    checks.ssl = process.env.NODE_ENV === 'production';
-    checks.icp = process.env.ICP_INTEGRATION === 'true' || true;
+    checks.docker = process.env.DOCKER_ENV !== 'false';
+    checks.ssl = process.env.SSL_ENABLED === 'true';
+    checks.icp = process.env.ICP_INTEGRATION !== 'false';
     
     // Capabilities Status
     checks.mission = true;
