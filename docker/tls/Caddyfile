@@ -1,21 +1,31 @@
-# Terminador TLS do gateway ai-platform (produção VPS-B).
+# Terminador TLS do API Platform (produção VPS-B).
 # Roda como container `ai-platform-caddy` em host network:
 #   docker run -d --name ai-platform-caddy --restart unless-stopped --network host \
 #     -v /opt/ai-platform-tls/Caddyfile:/etc/caddy/Caddyfile:ro \
 #     -v /etc/letsencrypt:/certs:ro caddy:2
 # Cert emitido via certbot webroot no diretório que o painel ICP já serve
 # (/etc/icontainer/apps/openresty/openresty/root -> /.well-known/acme-challenge).
-# Isolamento em 2 camadas: remote_ip aqui + rich rule firewalld na 8443 (só a origem).
+# Um front único (dashboard vanilla) na raiz; a API do gateway sob /v1, /admin
+# e /metrics. Protegido por TLS + (nas rotas admin/v1) API key ou JWT.
 {
     auto_https off
 }
 209-50-241-215.sslip.io:8443 {
     tls /certs/live/209-50-241-215.sslip.io/fullchain.pem /certs/live/209-50-241-215.sslip.io/privkey.pem
-    @allowed remote_ip 209.50.241.22 127.0.0.1
-    handle @allowed {
+
+    # Backend do gateway (loopback:3000): API pública /v1, painel admin /admin,
+    # métricas /metrics.
+    handle /v1/* {
         reverse_proxy 127.0.0.1:3000
     }
+    handle /admin/* {
+        reverse_proxy 127.0.0.1:3000
+    }
+    handle /metrics {
+        reverse_proxy 127.0.0.1:3000
+    }
+    # Dashboard (SPA vanilla) na raiz -> nginx do dashboard em loopback:80.
     handle {
-        respond "forbidden" 403
+        reverse_proxy 127.0.0.1:80
     }
 }

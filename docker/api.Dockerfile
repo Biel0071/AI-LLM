@@ -16,7 +16,6 @@ RUN npm install --workspaces --include-workspace-root
 
 COPY packages ./packages
 COPY apps/api ./apps/api
-COPY apps/dashboard ./apps/dashboard
 
 RUN npm run build -w packages/shared \
  && npx prisma generate --schema apps/api/prisma/schema.prisma \
@@ -34,7 +33,6 @@ COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build /app/apps/api/prisma ./apps/api/prisma
-COPY --from=build /app/apps/dashboard/public ./apps/dashboard/public
 
 WORKDIR /app/apps/api
 EXPOSE 3000
