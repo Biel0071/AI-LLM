@@ -15,7 +15,9 @@
     const res = await fetch(API + path, {
       ...options,
       headers: {
-        'content-type': 'application/json',
+        // content-type: application/json SO quando ha body. Fastify rejeita
+        // POST sem body se o content-type for json ("Body cannot be empty").
+        ...(options.body ? { 'content-type': 'application/json' } : {}),
         ...(token() ? { authorization: `Bearer ${token()}` } : {}),
         ...(options.headers || {}),
       },
