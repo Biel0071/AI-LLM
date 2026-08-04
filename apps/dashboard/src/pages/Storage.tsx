@@ -1,4 +1,3 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { LoadingState } from '../components/ui-states';
 import { useQuery } from '@tanstack/react-query';

@@ -1,4 +1,3 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle2, XCircle, ExternalLink, Settings2 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -42,7 +41,7 @@ export function Providers() {
         </div>
         
         <div className="divide-y divide-white/5">
-          {providers.map((provider, i) => (
+          {providers.map((provider: any, i: number) => (
             <motion.div 
               key={provider.id}
               initial={{ opacity: 0, x: -20 }}

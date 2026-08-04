@@ -1,9 +1,6 @@
-import React from 'react';
-import { motion } from 'framer-motion';
 import { LoadingState } from '../components/ui-states';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Terminal } from 'lucide-react';
 
 export function Logs() {
   const { data, isLoading } = useQuery({

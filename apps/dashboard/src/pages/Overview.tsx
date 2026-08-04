@@ -1,4 +1,3 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { Activity, Zap, Users, Globe, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -20,7 +19,7 @@ const item = {
 };
 
 export function Overview() {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['overview'],
     queryFn: api.getOverview,
   });

@@ -1,4 +1,3 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { FolderGit2, Plus, MoreHorizontal, Activity } from 'lucide-react';
 import { cn } from '../lib/utils';

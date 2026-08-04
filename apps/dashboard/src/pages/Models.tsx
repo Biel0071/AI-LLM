@@ -1,9 +1,8 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { LoadingState } from '../components/ui-states';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Database, Box } from 'lucide-react';
+import { Box } from 'lucide-react';
 
 export function Models() {
   const { data, isLoading } = useQuery({
