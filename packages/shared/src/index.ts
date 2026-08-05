@@ -1,6 +1,7 @@
 export * from './types';
 export * from './schemas';
 export * from './hash';
+export * from './model-traits';
 export * from './response';
 export * from './image-provider';
 export * from './model-router';

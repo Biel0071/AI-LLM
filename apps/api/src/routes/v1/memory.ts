@@ -23,7 +23,7 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
     return {
       success: true,
       scope,
-      memories: memories.map((memory) => ({
+      memories: memories.map((memory: typeof memories[0]) => ({
         ...memory,
         durationTotalMs: Number(memory.durationTotalMs),
         averageQuality: memory.successCount ? memory.qualityTotal / memory.successCount : 0,

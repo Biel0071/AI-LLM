@@ -14,6 +14,7 @@ export const QUEUE_NAMES = [
   'translation',
   'classification',
   'webhook',
+  'orchestrator',
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -99,7 +100,7 @@ export async function enqueue(
     });
     if (existing) return existing.id;
 
-    const claimed = await prisma.$transaction(async (tx) => {
+    const claimed = await prisma.$transaction(async (tx: typeof prisma) => {
       // Serializa somente requests com o mesmo hash. Isso fecha a janela em
       // que um lote concorrente criava varios jobs iguais antes do primeiro
       // INSERT ficar visivel, desperdicando provider/tokens.
@@ -216,8 +217,8 @@ async function runtimeConcurrencyFor(name: QueueName): Promise<number> {
     select: { queues: true, concurrency: true },
   }).catch(() => []);
   const live = nodes
-    .filter((node) => node.queues.split(',').includes(name))
-    .reduce((total, node) => total + Math.max(1, node.concurrency), 0);
+    .filter((node: typeof nodes[0]) => node.queues.split(',').includes(name))
+    .reduce((total: number, node: typeof nodes[0]) => total + Math.max(1, node.concurrency), 0);
   return live || concurrencyFor(name);
 }
 
@@ -233,9 +234,9 @@ async function averageJobDuration(name: QueueName): Promise<number> {
     where: { queue: name, status: 'completed', durationMs: { not: null } },
     orderBy: { finishedAt: 'desc' }, take: 20, select: { durationMs: true },
   });
-  const durations = recent.map((job) => job.durationMs)
-    .filter((duration): duration is number => typeof duration === 'number' && duration > 0)
-    .sort((a, b) => a - b);
+  const durations = recent.map((job: typeof recent[0]) => job.durationMs as number | null)
+    .filter((duration: number | null): duration is number => typeof duration === 'number' && duration > 0)
+    .sort((a: number, b: number) => a - b);
   if (!durations.length) return fallbackDurationFor(name);
   const middle = Math.floor(durations.length / 2);
   return durations.length % 2 ? durations[middle] : Math.round((durations[middle - 1] + durations[middle]) / 2);

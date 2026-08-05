@@ -45,6 +45,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    env_file: .env
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -64,6 +65,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    env_file: .env
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-apiplatform}:${POSTGRES_PASSWORD:-apiplatform_secret_pass}@postgres:5432/${POSTGRES_DB:-apiplatform}?schema=public

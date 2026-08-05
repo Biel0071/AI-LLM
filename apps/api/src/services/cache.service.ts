@@ -107,7 +107,7 @@ export class CacheService {
         where: { hash },
         data: { hits: { increment: count }, lastHitAt: new Date() },
       }),
-    )).then(() => undefined).catch((err) => {
+    )).then(() => undefined).catch((err: unknown) => {
       for (const [hash, count] of batch) this.pendingHits.set(hash, (this.pendingHits.get(hash) ?? 0) + count);
       logger.warn({ err }, 'cache hit flush failed');
     }).finally(() => {

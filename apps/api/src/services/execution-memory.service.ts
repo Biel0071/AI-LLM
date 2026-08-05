@@ -55,5 +55,5 @@ export async function rememberExecutionSuccess(
       successCount: { increment: 1 }, qualityTotal: { increment: quality },
       durationTotalMs: { increment: BigInt(durationMs) }, lastUsedAt: new Date(),
     },
-  }).catch((error) => logger.warn({ queue, error }, 'synchronous execution memory learning failed'));
+  }).catch((error: any) => logger.warn({ queue, error }, 'synchronous execution memory learning failed'));
 }

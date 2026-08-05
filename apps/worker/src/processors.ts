@@ -7,6 +7,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Job } from 'bullmq';
+import { HybridPlanner } from './planner';
+import { SmartScheduler } from './scheduler';
+import { PromptRenderer } from './prompt-renderer';
+import { ExecutionBudget, ExecutionContext, ExecutionTrace } from '@api-platform/shared';
 import {
   AIProvider,
   Capability,
@@ -20,7 +24,12 @@ import {
   StandardResponse,
   TaskHint,
 } from '@api-platform/shared';
+import { promisify } from 'node:util';
+import type { Job } from 'bullmq';
+import { PrismaClient } from '@prisma/client';
+import { getModelTraits } from '@api-platform/shared';
 
+const prisma = new PrismaClient();
 const execFileAsync = promisify(execFile);
 
 /**
@@ -103,7 +112,7 @@ async function runWithFallback<T>(
   task?: TaskHint,
 ): Promise<StandardResponse<T>> {
   let lastError: unknown;
-  const candidates = registry.resolveCandidates(capability, requested, fallbackOrder);
+  const candidates = await registry.resolveCandidates(capability, requested, fallbackOrder);
   const ready = candidates.filter((provider) => !providerCircuit.isOpen(`${provider.name}:${capability}`));
   const runnable = ready.length ? ready : candidates.slice(0, 1);
   for (const provider of runnable) {
@@ -177,7 +186,7 @@ export const imageProcessor: ProcessorFn = async (job, registry) => {
   const data = job.data as Record<string, any>;
   await releaseOllamaMemoryForImage();
   if (data.__kind === 'multiangle') {
-    const provider = registry.resolve('image', data.provider) as any;
+    const provider = await registry.resolve('image', data.provider) as any;
     return run(provider, async () => {
       const count = Math.min(Math.max(Number(data.count) || 5, 1), 8);
       const elevation = Number(data.elevation) || 0;
@@ -203,7 +212,7 @@ export const imageProcessor: ProcessorFn = async (job, registry) => {
     });
   }
   if (data.__kind === 'gallery') {
-    const provider = registry.resolve('image', data.provider);
+    const provider = await registry.resolve('image', data.provider);
     return run(provider, async () => {
       const requestedCount = Math.min(Math.max(Number(data.count) || 5, 1), 10);
       const configuredMax = Math.min(Math.max(Number(process.env.GALLERY_MAX_IMAGES_PER_JOB) || 10, 1), 10);
@@ -459,6 +468,89 @@ export const missionProcessor: ProcessorFn = async (job, registry) => {
   );
 };
 
+// ---------- Worker Orchestrator ----------
+export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
+  const data = job.data as any;
+  const originalMessages = data.messages || [];
+  const estimatedTokens = data.estimatedTokens || 10;
+  const tenantId = job.data.__tenantId;
+  const executionId = `exec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  
+  const lastUserMsg = originalMessages.findLast((m: any) => m.role === 'user');
+  let userText = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : '';
+  if (!userText.trim()) throw new Error('Empty prompt rejected by filter');
+
+  const budget: ExecutionBudget = {
+    maxNodes: 15,
+    maxParallelNodes: 4,
+    maxTokens: 50000,
+    maxExecutionTimeMs: 45000
+  };
+
+  const planner = new HybridPlanner(budget);
+  
+  // 1. Plan execution
+  console.log(`[${executionId}] Start Planning for prompt: "${userText.slice(0, 30)}..."`);
+  const { plan, plannerTimeMs } = await planner.plan(userText);
+  
+  const ctx: ExecutionContext = {
+    executionId,
+    budget,
+    plan,
+    results: {},
+    startTime: Date.now()
+  };
+
+  // 2. Schedule and execute DAG
+  const renderer = new PromptRenderer();
+  const scheduler = new SmartScheduler(ctx, registry, renderer);
+  
+  console.log(`[${executionId}] Start DAG Execution. Nodes: ${plan.nodes.length}`);
+  const trace: ExecutionTrace = await scheduler.executePlan();
+  
+  trace.plannerTimeMs = plannerTimeMs;
+  
+  console.log(`[${executionId}] Trace:`, JSON.stringify(trace));
+  
+  // 3. Assemble final response
+  // If the composer node exists, get its result. Otherwise get the last node.
+  const nodeResults = Object.values(ctx.results);
+  const composerNode = nodeResults.find(r => r.nodeId === 'node_composer');
+  
+  let finalResult = '';
+  let finalStatus = 'failed';
+  
+  if (composerNode && composerNode.status === 'success') {
+    finalResult = composerNode.result;
+    finalStatus = 'success';
+  } else if (nodeResults.length > 0) {
+    // Pegar o resultado do ultimo nó que teve sucesso
+    const lastSuccess = [...nodeResults].reverse().find(r => r.status === 'success');
+    if (lastSuccess) {
+      finalResult = lastSuccess.result;
+      finalStatus = 'success';
+    } else {
+      throw new Error(`All DAG nodes failed. Trace: ${JSON.stringify(trace)}`);
+    }
+  } else {
+    throw new Error('DAG executed but produced no results');
+  }
+
+  return ok({
+    provider: 'orchestrator',
+    model: 'dag-ensemble',
+    executionTime: trace.latencyMs,
+    tokens: {
+      total: trace.tokensUsed
+    },
+    result: {
+      text: finalResult,
+      trace,
+      status: finalStatus
+    }
+  });
+};
+
 export const processors: Record<string, ProcessorFn> = {
   text: textProcessor,
   vision: visionProcessor,
@@ -471,4 +563,5 @@ export const processors: Record<string, ProcessorFn> = {
   webhook: webhookProcessor,
   audio: audioProcessor,
   mission: missionProcessor,
+  orchestrator: orchestratorProcessor,
 };

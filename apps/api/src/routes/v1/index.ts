@@ -36,6 +36,7 @@ import { reverseRoutes } from './reverse';
 import { memoryRoutes } from './memory';
 import { ConfigurationCenterService } from '../../services/configuration-center.service';
 import { SyncCenterService } from '../../services/sync-center.service';
+import { registerPromptTemplateRoutes } from './prompt-templates';
 
 function resolveJobQueue(type: string, payload: Record<string, unknown>): QueueName {
   if (type === 'text' && payload.task === 'vision') {
@@ -114,6 +115,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
 
   await app.register(reverseRoutes);
   await app.register(memoryRoutes);
+  await app.register(registerPromptTemplateRoutes);
 
   // ---------- Centro de Configuração e Sync de Cluster ----------
   app.get('/config', { schema: { tags: ['v1'] } }, async () => {
@@ -449,7 +451,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   app.post('/history', { config: rlText, schema: { tags: ['v1', 'image'] } }, async (req) => {
     const query = z.object({ limit: z.number().int().min(1).max(200).default(50) }).parse(req.body ?? {});
     const images = await prisma.image.findMany({ where: { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId }, orderBy: { createdAt: 'desc' }, take: query.limit });
-    return { success: true, images: images.map((image) => ({ ...image, seed: image.seed?.toString() })) };
+    return { success: true, images: images.map((image: any) => ({ ...image, seed: image.seed?.toString() })) };
   });
 
   app.post('/workflow', { config: rlText, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {
@@ -491,6 +493,10 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     const { provider } = req.query as { provider?: string };
     const openAiData = [
       { id: 'auto', object: 'model', created: 1700000000, owned_by: 'api-platform' },
+      { id: 'claude-3-5-sonnet-20241022', object: 'model', created: 1700000000, owned_by: 'anthropic' },
+      { id: 'claude-3-opus-20240229', object: 'model', created: 1700000000, owned_by: 'anthropic' },
+      { id: 'claude-3-haiku-20240307', object: 'model', created: 1700000000, owned_by: 'anthropic' },
+      { id: 'gpt-4o', object: 'model', created: 1700000000, owned_by: 'openai' },
       { id: 'qwen2.5:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
       { id: 'llama3:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
       { id: 'deepseek-r1:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },

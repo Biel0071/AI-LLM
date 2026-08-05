@@ -33,7 +33,7 @@ export async function observabilityRoutes(secured: FastifyInstance): Promise<voi
     });
     return {
       success: true,
-      usage: usage.map((u) => ({ ...u, totalTokens: u.totalTokens.toString() })),
+      usage: usage.map((u: any) => ({ ...u, totalTokens: u.totalTokens.toString() })),
     };
   });
 
@@ -65,7 +65,7 @@ export async function observabilityRoutes(secured: FastifyInstance): Promise<voi
     const workers = await prisma.workerNode.findMany({ orderBy: { lastHeartbeat: 'desc' } });
     return {
       success: true,
-      workers: workers.map((w) => ({ ...w, online: w.lastHeartbeat > cutoff })),
+      workers: workers.map((w: any) => ({ ...w, online: w.lastHeartbeat > cutoff })),
     };
   });
 

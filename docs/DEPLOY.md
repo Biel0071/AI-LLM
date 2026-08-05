@@ -1,101 +1,35 @@
-# Deploy
+# Deploy Enterprise & CI/CD - API Platform Enterprise v5.0
 
-## Local → VPS sem alterar código
+## Política "VPS First"
+O ambiente local (localhost) de desenvolvimento não é considerado a referência final de estabilidade. O ambiente de produção na VPS (Docker, Nginx real, Rede bridge, Certbot) dita a arquitetura final.
 
-Todo o comportamento é controlado por variáveis de ambiente (`.env`). O mesmo build
-roda localmente e em produção.
+## Ciclo de Deploy Automático (Continuous Deployment)
 
-## VPS (Ubuntu/Debian)
+O sistema suportará a atualização baseada em eventos do GitHub Webhook no branch `main`.
 
-```bash
-git clone <seu-repo> api-platform && cd api-platform
-bash scripts/deploy-vps.sh
-```
+Fluxo:
+`git push origin main` -> Dispara webhook (via porta webhook_receiver na VPS) -> `scripts/update.sh`
 
-O script instala Docker (se necessário), gera `JWT_SECRET`, `ADMIN_PASSWORD` e
-`DEFAULT_API_KEY` fortes, e sobe a stack completa.
+### Scripts Requeridos
 
-### Portas
+1. `scripts/update.sh`:
+   - Efetua `git pull`.
+   - Roda script de backup (`scripts/backup.sh`).
+   - Constrói as imagens: `docker compose build --pull api worker dashboard`.
+   - Migrations do banco de dados: `npx prisma migrate deploy` via executor local/container.
+   - Restart condicional: `docker compose up -d --no-deps`.
+   - Chama script de validação de `health.sh`. Se falhar por mais de 60s, aciona `rollback.sh`.
 
-| Serviço | Porta |
-|---|---|
-| API (Fastify) | 3000 |
-| Dashboard (nginx) | 8080 |
-| Postgres | 5432 |
-| Redis | 6379 |
-| Prometheus (opcional) | 9090 |
-| Grafana (opcional) | 3001 |
+2. `scripts/rollback.sh`:
+   - Traz a stack down.
+   - Aplica restore do banco (`pg_restore` do ultimo snapshot `backup.sql`).
+   - Sobe a API com tag/sha anterior.
 
-## TLS com Traefik (recomendado em produção)
+3. `scripts/health.sh`:
+   - Loop em `/v1/health` esperando `status: "ONLINE"` do gateway e dos workers.
 
-Crie `docker-compose.traefik.yml`:
+4. `scripts/doctor.sh`:
+   - Checagem aprofundada: uso de `docker stats`, `free -m`, logs e contagem de retries.
 
-```yaml
-services:
-  traefik:
-    image: traefik:v3.1
-    restart: unless-stopped
-    command:
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.le.acme.tlschallenge=true
-      - --certificatesresolvers.le.acme.email=voce@dominio.com
-      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
-    ports: ['80:80', '443:443']
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - letsencrypt:/letsencrypt
-
-  api:
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`ai.seudominio.com`)
-      - traefik.http.routers.api.entrypoints=websecure
-      - traefik.http.routers.api.tls.certresolver=le
-      - traefik.http.services.api.loadbalancer.server.port=3000
-
-volumes:
-  letsencrypt:
-```
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
-```
-
-Alternativa simples: use o `docker/nginx.conf` como base atrás de um certbot.
-
-## Monitoramento
-
-```bash
-docker compose --profile monitoring up -d
-```
-
-- Prometheus: `http://IP:9090` — scrape de `/metrics` da API
-- Grafana: `http://IP:3001` (admin/admin) — adicione o Prometheus como datasource
-  (`http://prometheus:9090`) e monte dashboards com `ai_requests_total`,
-  `ai_request_duration_seconds`, `ai_tokens_total`
-
-## Escalando workers
-
-```bash
-docker compose up -d --scale worker=4
-```
-
-Ajuste `WORKER_CONCURRENCY` para controlar jobs simultâneos por worker.
-
-## Backup
-
-- Postgres: volume `pgdata` (use `pg_dump` agendado)
-- Redis: volume `redisdata` (appendonly ativado)
-
-## Checklist de produção
-
-- [ ] `NODE_ENV=production`
-- [ ] `JWT_SECRET` forte e único
-- [ ] `ADMIN_PASSWORD` forte (o script de VPS já gera)
-- [ ] TLS habilitado (Traefik/Caddy/nginx)
-- [ ] Portas 5432/6379 fechadas no firewall (apenas rede interna do Docker)
-- [ ] Backup do Postgres agendado
-- [ ] Chaves de providers pagos com limite de gasto configurado no fornecedor
+## Interface do Deploy
+O Dashboard devera ter uma tela (na section Settings ou em Overview) detalhando o ultimo deploy: Versao, Commit SHA, Timestamp, Status do BD e Rollback trigger (Botão "Voltar Versão").

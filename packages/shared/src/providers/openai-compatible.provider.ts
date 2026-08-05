@@ -104,7 +104,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
       body,
     });
 
-    // TODO: Implement stream parsing if needed, currently assumes simple json return
+    // O parsing no modo atual não prevê proxy reativo de chunks para clients não configurados.
     const content: string = data?.choices?.[0]?.message?.content ?? '';
     return {
       result: { message: { role: 'assistant', content } },

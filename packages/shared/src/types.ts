@@ -128,6 +128,11 @@ export interface ModelInfo {
   capabilities?: Capability[];
   sizeBytes?: number;
   contextWindow?: number;
+  maxContextTokens?: number;
+  maxOutputTokens?: number;
+  strengths?: Array<'chat' | 'code' | 'vision' | 'image' | 'embed'>;
+  tier?: 'cheap' | 'medium' | 'strong';
+  latency?: number;
 }
 
 export interface ProviderHealth {
@@ -208,4 +213,62 @@ export class CapabilityNotSupportedError extends ProviderError {
     super(provider, `capability "${capability}" is not supported`, 'CAPABILITY_NOT_SUPPORTED', 400, false);
     this.name = 'CapabilityNotSupportedError';
   }
+}
+
+export interface DagNode {
+  id: string;
+  task: string;
+  capability: Capability;
+  dependencies: string[];
+  priority: number;
+  params: Record<string, any>;
+}
+
+export interface DagPlan {
+  planId: string;
+  nodes: DagNode[];
+}
+
+export interface ExecutionBudget {
+  maxNodes: number;
+  maxParallelNodes: number;
+  maxTokens: number;
+  maxExecutionTimeMs: number;
+}
+
+export interface NodeExecutionResult {
+  nodeId: string;
+  status: 'success' | 'failed' | 'skipped';
+  result?: any;
+  error?: string;
+  executionTimeMs: number;
+  providerUsed?: string;
+  cost?: number;
+}
+
+export interface ResultStore {
+  [nodeId: string]: NodeExecutionResult;
+}
+
+export interface ExecutionContext {
+  executionId: string;
+  budget: ExecutionBudget;
+  plan?: DagPlan;
+  results: ResultStore;
+  startTime: number;
+}
+
+export interface ExecutionTrace {
+  executionId: string;
+  planId?: string;
+  plannerTimeMs?: number;
+  nodesCreated: number;
+  nodesExecuted: number;
+  nodesFailed: number;
+  retries: number;
+  fallbacks: number;
+  latencyMs: number;
+  tokensUsed: number;
+  cost: number;
+  parallelGroups: number;
 }

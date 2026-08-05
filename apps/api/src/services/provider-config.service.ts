@@ -49,7 +49,7 @@ export async function saveProviderConfig(form: ProviderForm): Promise<void> {
 
 export async function listProviderConfigs() {
   const rows = await prisma.providerConfig.findMany({ orderBy: { name: 'asc' } });
-  return rows.map((row) => {
+  return rows.map((row: typeof rows[0]) => {
     const settings = (row.settings ?? {}) as StoredSettings;
     return { ...row, settings: { ...settings, apiKeyEncrypted: undefined }, hasApiKey: Boolean(settings.apiKeyEncrypted) };
   });
@@ -63,18 +63,18 @@ export async function buildProviderEnv(): Promise<Record<string, string | undefi
     const secret = decrypt(s.apiKeyEncrypted);
     const prefix = row.name.toUpperCase();
     if (row.name === 'cloudflare') {
-      result.CLOUDFLARE_ACCOUNT_ID = s.accountId;
-      result.CLOUDFLARE_API_TOKEN = secret;
-      result.CLOUDFLARE_BASE_URL = s.baseUrl;
-      result.CLOUDFLARE_DEFAULT_MODEL = s.defaultModel;
-      result.CLOUDFLARE_EMBED_MODEL = s.embedModel;
+      if (s.accountId) result.CLOUDFLARE_ACCOUNT_ID = s.accountId;
+      if (secret) result.CLOUDFLARE_API_TOKEN = secret;
+      if (s.baseUrl) result.CLOUDFLARE_BASE_URL = s.baseUrl;
+      if (s.defaultModel) result.CLOUDFLARE_DEFAULT_MODEL = s.defaultModel;
+      if (s.embedModel) result.CLOUDFLARE_EMBED_MODEL = s.embedModel;
     } else if (row.name === 'ollama' || row.name === 'lmstudio' || row.name === 'comfyui' || row.name === 'forge' || row.name === 'invokeai') {
-      result[`${prefix}_BASE_URL`] = s.baseUrl;
-      result[`${prefix}_DEFAULT_MODEL`] = s.defaultModel;
+      if (s.baseUrl) result[`${prefix}_BASE_URL`] = s.baseUrl;
+      if (s.defaultModel) result[`${prefix}_DEFAULT_MODEL`] = s.defaultModel;
     } else {
-      result[`${prefix}_API_KEY`] = secret;
-      result[`${prefix}_BASE_URL`] = s.baseUrl;
-      result[`${prefix}_DEFAULT_MODEL`] = s.defaultModel;
+      if (secret) result[`${prefix}_API_KEY`] = secret;
+      if (s.baseUrl) result[`${prefix}_BASE_URL`] = s.baseUrl;
+      if (s.defaultModel) result[`${prefix}_DEFAULT_MODEL`] = s.defaultModel;
     }
   }
   return result;

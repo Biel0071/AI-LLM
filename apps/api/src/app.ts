@@ -53,6 +53,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // ---------- Health (publico) ----------
   app.get('/v1/health', { schema: { tags: ['system'] } }, async () => {
+    const requestStart = Date.now();
     const checks: Record<string, boolean | string | number | any> = {};
     
     // Core Dependencies
@@ -101,7 +102,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       const qDepth = stats.reduce((acc, q) => acc + q.waiting, 0);
       const activeCount = stats.reduce((acc, q) => acc + q.active, 0);
       checks.queue = { waiting: qDepth, active: activeCount };
-      checks.workers = activeCount > 0 ? activeCount : 12; // Provide baseline for UI demo if idle
+      checks.workers = activeCount;
     } catch {
       checks.queue = 'Error';
       checks.workers = 0;
@@ -136,9 +137,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     checks.providers = providerDetails;
 
-    // Simulate global API latency overhead calculation
-    const globalLatency = Math.floor(Math.random() * 20) + 20; // 20-40ms baseline
-    checks.latency = globalLatency;
+    checks.latency = Date.now() - requestStart;
 
     const healthy = checks.postgres && checks.redis;
 

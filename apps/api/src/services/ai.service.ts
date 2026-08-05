@@ -134,7 +134,8 @@ export async function execute<T>(
   if (!effectiveRequest.model) {
     let primaryProviderName: string | undefined;
     try {
-      primaryProviderName = registry.resolve(capability, effectiveRequest.provider as string | undefined).name;
+      const primaryProvider = await registry.resolve(capability, effectiveRequest.provider as string | undefined);
+      primaryProviderName = primaryProvider.name;
     } catch {
       primaryProviderName = effectiveRequest.provider as string | undefined;
     }
@@ -147,12 +148,15 @@ export async function execute<T>(
   Object.assign(request, effectiveRequest);
 
   const candidates = effectiveRequest.fallback === false
-    ? [registry.resolve(capability, effectiveRequest.provider)]
-    : registry.resolveCandidates(capability, effectiveRequest.provider, fallbackOrder);
+    ? [await registry.resolve(capability, effectiveRequest.provider)]
+    : await registry.resolveCandidates(capability, effectiveRequest.provider, fallbackOrder);
   
   for (const candidate of candidates) {
     try {
-      metrics.providerScore.set({ provider: candidate.name, capability }, registry.calculateScore(candidate, capability));
+      // calculateScore agora é async - usamos Promise para não bloquear
+      void registry.calculateScore(candidate, capability).then(score => {
+        metrics.providerScore.set({ provider: candidate.name, capability }, score);
+      });
     } catch { /* ignore */ }
   }
   const useCache = ctx.cache !== false && effectiveRequest.cache !== false;

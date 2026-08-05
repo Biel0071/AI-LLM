@@ -67,7 +67,7 @@ export async function imagesRoutes(secured: FastifyInstance): Promise<void> {
   secured.get('/image/history', { schema: { tags: ['admin', 'image'] } }, async (req) => {
     const query = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) }).parse(req.query);
     const images = await prisma.image.findMany({ orderBy: { createdAt: 'desc' }, take: query.limit, include: { tenant: { select: { name: true } } } });
-    return { success: true, images: images.map((image) => ({ ...image, seed: image.seed?.toString() })) };
+    return { success: true, images: images.map((image: any) => ({ ...image, seed: image.seed?.toString() })) };
   });
 
   secured.get('/image/queue', { schema: { tags: ['admin', 'image'] } }, async () => ({

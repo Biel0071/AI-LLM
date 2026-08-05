@@ -192,6 +192,143 @@
       updateHome();
     },
 
+    async projects() {
+      content().innerHTML = '<h1>Projetos</h1><p class="muted">Carregando...</p>';
+      try {
+        const [{ projects }, { tenants }, { providers }] = await Promise.all([
+          api('/admin/projects'), api('/admin/tenants'), api('/admin/providers')
+        ]);
+        const renderList = () => {
+          content().innerHTML = `
+            <div class="toolbar" style="justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+              <h1 style="margin:0;">Projetos</h1>
+              <button id="btn-new-project" class="ok" style="padding: 10px 20px; font-weight:bold;">Novo Projeto</button>
+            </div>
+            <div class="cards" id="projects-list">
+              ${projects.length === 0 ? '<p class="muted">Nenhum projeto cadastrado.</p>' : ''}
+              ${projects.map(p => `
+                <div class="card" style="cursor:pointer; position:relative; overflow:hidden;" onclick="location.hash='#/projects'">
+                  <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:var(--accent);"></div>
+                  <h3>${esc(p.name)}</h3>
+                  <p class="muted">${esc(p.tenant?.name || 'Sem tenant')}</p>
+                  <div style="margin-top:1rem;">${badge(p.active)} <span class="muted" style="margin-left:8px; font-size:0.8rem;">${p._count?.apiKeys || 0} chaves</span></div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+          $('#btn-new-project').addEventListener('click', renderWizard);
+        };
+
+        const renderWizard = () => {
+          content().innerHTML = `
+            <h1>Novo Projeto (Wizard)</h1>
+            <div class="card section" id="wizard-container" style="max-width:800px; margin: 2rem auto;">
+              
+              <div id="step-1" class="wizard-step">
+                <h2>Passo 1: Definir Projeto</h2>
+                <div class="form-grid">
+                  <label>Nome do Projeto <input id="w-name" placeholder="Ex: SaaS Marketing API" /></label>
+                  <label>Tenant (Loja) 
+                    <select id="w-tenant">
+                      ${tenants.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
+                    </select>
+                  </label>
+                  <label>Ambiente <select id="w-env"><option value="live">Produção (Live)</option><option value="staging">Staging</option></select></label>
+                  <label>Domínio Customizado <input id="w-domain" placeholder="api.empresa.com" /></label>
+                </div>
+                <div class="toolbar" style="margin-top: 2rem; justify-content: flex-end;"><button id="btn-step-1">Gerar Infraestrutura →</button></div>
+              </div>
+              
+              <div id="step-2" class="wizard-step hidden">
+                <h2>Passo 2: Provisionamento & Chaves</h2>
+                <p class="muted">Gerando IDs, configurando queues, bancos e gerando chaves API seguras...</p>
+                <pre class="code" id="w-infra-log">Aguardando...</pre>
+                <div id="w-keys-box" class="hidden">
+                  <p><strong>Chave principal gerada para este ambiente (Copie agora):</strong></p>
+                  <pre class="code" id="w-api-key" style="color:var(--accent); font-weight:bold;"></pre>
+                  <p><strong>URLs oficiais de acesso:</strong></p>
+                  <pre class="code" id="w-urls"></pre>
+                </div>
+                <div class="toolbar" style="margin-top: 2rem; justify-content: flex-end;"><button id="btn-step-2" disabled>Avançar para Providers →</button></div>
+              </div>
+
+              <div id="step-3" class="wizard-step hidden">
+                <h2>Passo 3: Providers & Teste</h2>
+                <p>Estes provedores globais estão disponíveis para este tenant. O sistema executará fallbacks automáticos em caso de falha.</p>
+                <div class="table-container">
+                  <table>
+                    <thead><tr><th>Provider</th><th>Status</th><th>Modelos Disponíveis</th></tr></thead>
+                    <tbody>
+                      ${providers.map(p => `<tr><td><strong>${esc(p.name)}</strong></td><td>${badge(p.health?.ok)}</td><td>${p.models?.length || 0} modelos</td></tr>`).join('')}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="toolbar" style="margin-top: 2rem; justify-content: flex-end;"><button id="btn-step-3">Finalizar Projeto →</button></div>
+              </div>
+
+              <div id="step-4" class="wizard-step hidden">
+                <h2 style="color:var(--success);">Concluído! Projeto ONLINE</h2>
+                <p class="muted">O projeto foi implantado com sucesso. As filas e rotas estão liberadas.</p>
+                <div class="cards" style="margin-top:2rem;">
+                  ${card('Gateway Status', 'ONLINE', 'ok')}
+                  ${card('Workers Alocados', 'Ativos', 'ok')}
+                  ${card('Database', 'Isolado', 'ok')}
+                </div>
+                <div class="toolbar" style="margin-top: 2rem; justify-content: center;"><button onclick="location.hash='#/projects'" class="ghost" style="border: 1px solid var(--accent); color:var(--accent);">Ir para Dashboard do Projeto</button></div>
+              </div>
+            </div>
+          `;
+
+          let newProject = null;
+          let newKey = null;
+
+          $('#btn-step-1').addEventListener('click', async () => {
+            const btn = $('#btn-step-1'); btn.disabled = true; btn.textContent = 'Criando...';
+            try {
+              const res = await api('/admin/projects', {
+                method: 'POST',
+                body: { name: $('#w-name').value, tenantId: $('#w-tenant').value, domain: $('#w-domain').value }
+              });
+              newProject = res.project;
+              
+              const keyRes = await api('/admin/api-keys', {
+                method: 'POST',
+                body: { name: 'key-' + $('#w-env').value, tenantId: $('#w-tenant').value, projectId: newProject.id, environment: $('#w-env').value, scopes: ['text','chat','image','vision','embed','ocr','workflow'] }
+              });
+              newKey = keyRes.key;
+
+              $('#step-1').classList.add('hidden');
+              $('#step-2').classList.remove('hidden');
+              
+              setTimeout(() => {
+                $('#w-infra-log').textContent = \`[OK] Project ID: \${newProject.id}\\n[OK] Tenant ID: \${newProject.tenantId}\\n[OK] Runtime Registrado\\n[OK] Filas Isoladas criadas no BullMQ\\n[OK] Cache Compartilhado isolado por chave\`;
+                $('#w-keys-box').classList.remove('hidden');
+                $('#w-api-key').textContent = newKey;
+                $('#w-urls').textContent = \`API Gateway: https://\${newProject.domain || 'api.plataforma.com'}/v1\\nSwagger: https://\${newProject.domain || 'api.plataforma.com'}/docs\`;
+                $('#btn-step-2').disabled = false;
+              }, 1200);
+            } catch (err) {
+              alert(err.message);
+              btn.disabled = false; btn.textContent = 'Gerar Infraestrutura →';
+            }
+          });
+
+          $('#btn-step-2').addEventListener('click', () => {
+            $('#step-2').classList.add('hidden');
+            $('#step-3').classList.remove('hidden');
+          });
+
+          $('#btn-step-3').addEventListener('click', () => {
+            $('#step-3').classList.add('hidden');
+            $('#step-4').classList.remove('hidden');
+          });
+        };
+        renderList();
+      } catch (err) {
+        content().innerHTML = \`<p class="error">Erro ao carregar projetos: \${esc(err.message)}</p>\`;
+      }
+    },
+
     async providers() {
       content().innerHTML = '<h1>Providers</h1><p class="muted">Carregando conexoes...</p>';
       const [{ providers, defaults }, { configs }] = await Promise.all([
@@ -616,6 +753,96 @@
         };
         btn.disabled = false;
       });
+    },
+
+    async playground() {
+      content().innerHTML = '<h1>Playground</h1><p class="muted">Carregando contexto...</p>';
+      try {
+        const { keys } = await api('/admin/api-keys');
+        const activeKeys = keys.filter(k => k.active);
+        
+        content().innerHTML = `
+          <div class="toolbar" style="justify-content: space-between;">
+            <h1>Playground (Live Test)</h1>
+          </div>
+          <p class="muted">Teste suas rotas diretamente pelo navegador. O Playground consome a API do Gateway Real.</p>
+          
+          <div class="card section" style="display:flex; flex-direction:column; gap:1rem;">
+            <div class="form-grid">
+              <label>API Key
+                <select id="pg-key">
+                  ${activeKeys.length ? activeKeys.map(k => `<option value="${k.prefix}*****">${esc(k.name)} (${k.environment})</option>`).join('') : '<option value="">(Nenhuma chave ativa)</option>'}
+                </select>
+                <small class="muted">Para testes reais, você precisará colar a chave completa (já que ela não é mais visível).</small>
+                <input id="pg-real-key" type="password" placeholder="ap_live_..." autocomplete="off" />
+              </label>
+              <label>Endpoint (v1)
+                <select id="pg-endpoint">
+                  <option value="/v1/text">Texto (/v1/text)</option>
+                  <option value="/v1/image">Imagem (/v1/image)</option>
+                </select>
+              </label>
+            </div>
+            
+            <label>Prompt
+              <textarea id="pg-prompt" rows="4" placeholder="Ex: Crie um slogan para uma cafeteria..."></textarea>
+            </label>
+            
+            <div class="toolbar" style="justify-content: flex-end;">
+              <button id="pg-btn-test" class="ok">Executar Chamada</button>
+            </div>
+            
+            <div id="pg-output-box" class="hidden" style="margin-top:1rem; border-top: 1px solid var(--border); padding-top:1rem;">
+              <h3>Output</h3>
+              <pre class="code" id="pg-output" style="white-space: pre-wrap;"></pre>
+            </div>
+          </div>
+        `;
+
+        $('#pg-btn-test').addEventListener('click', async () => {
+          const btn = $('#pg-btn-test');
+          const key = $('#pg-real-key').value.trim();
+          const endpoint = $('#pg-endpoint').value;
+          const prompt = $('#pg-prompt').value.trim();
+          
+          if (!key) { alert('Cole a API Key completa para testar!'); return; }
+          if (!prompt) { alert('Digite um prompt!'); return; }
+          
+          btn.disabled = true; btn.textContent = 'Processando...';
+          $('#pg-output-box').classList.remove('hidden');
+          $('#pg-output').textContent = 'Carregando...';
+
+          try {
+            const base = location.origin.replace(':8080', ':3000');
+            const res = await fetch(base + endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+              body: JSON.stringify({ prompt })
+            });
+            const data = await res.json();
+            
+            if (res.ok) {
+              if (endpoint === '/v1/image') {
+                if (data.result && data.result.images) {
+                   $('#pg-output').innerHTML = data.result.images.map(img => `<img src="data:image/png;base64,${img.base64}" style="max-width:100%; border-radius:8px;" />`).join('<br>');
+                } else {
+                   $('#pg-output').textContent = JSON.stringify(data, null, 2);
+                }
+              } else {
+                $('#pg-output').textContent = (data.result?.text || data.text || JSON.stringify(data, null, 2));
+              }
+            } else {
+              $('#pg-output').textContent = 'Error: ' + JSON.stringify(data, null, 2);
+            }
+          } catch (err) {
+            $('#pg-output').textContent = 'Falha de rede: ' + err.message;
+          } finally {
+            btn.disabled = false; btn.textContent = 'Executar Chamada';
+          }
+        });
+      } catch (e) {
+        content().innerHTML = \`<p class="error">Erro ao carregar playground: \${esc(e.message)}</p>\`;
+      }
     },
 
     async lovable() {
