@@ -18,20 +18,29 @@ export interface ProviderMetrics {
   throughput: number;     // tokens per second
 }
 
-// Em um ambiente real, este estado seria mantido num Redis.
-// Mock inicial para suportar a politica Local First -> Cloud Second -> Fallback Third
-const mockMetrics: Record<string, ProviderMetrics> = {
-  'ollama': { priority: 1, health: 1.0, latency: 150, contextWindow: 8192, cost: 0, throughput: 50 },
-  'lmstudio': { priority: 1, health: 1.0, latency: 120, contextWindow: 8192, cost: 0, throughput: 60 },
-  'comfyui': { priority: 1, health: 1.0, latency: 5000, contextWindow: 0, cost: 0, throughput: 1 },
-  'forge': { priority: 1, health: 1.0, latency: 4000, contextWindow: 0, cost: 0, throughput: 1 },
-  'gemini': { priority: 2, health: 0.99, latency: 300, contextWindow: 1048576, cost: 1, throughput: 100 },
-  'anthropic': { priority: 2, health: 0.99, latency: 400, contextWindow: 200000, cost: 3, throughput: 80 },
-  'openai': { priority: 2, health: 0.99, latency: 350, contextWindow: 128000, cost: 2, throughput: 90 },
-  'groq': { priority: 2, health: 0.99, latency: 50, contextWindow: 32768, cost: 0.5, throughput: 800 },
-  'cloudflare': { priority: 2, health: 0.98, latency: 80, contextWindow: 8192, cost: 0.1, throughput: 300 },
-  'openrouter': { priority: 3, health: 0.95, latency: 600, contextWindow: 128000, cost: 1.5, throughput: 40 },
-  'replicate': { priority: 3, health: 0.90, latency: 2000, contextWindow: 8192, cost: 2, throughput: 20 },
+/**
+ * Métricas de fallback para providers SEM histórico no RequestLog.
+ * Usado APENAS quando não há dados reais disponíveis (provider novo ou primeira chamada).
+ * Em produção, estas métricas são substituídas por dados reais do RequestLog.
+ */
+const fallbackMetrics: Record<string, ProviderMetrics> = {
+  // Priority 1: Local First
+  'ollama': { priority: 1, health: 0.95, latency: 200, contextWindow: 8192, cost: 0, throughput: 50 },
+  'lmstudio': { priority: 1, health: 0.95, latency: 150, contextWindow: 8192, cost: 0, throughput: 60 },
+  'comfyui': { priority: 1, health: 0.90, latency: 5000, contextWindow: 0, cost: 0, throughput: 1 },
+  'forge': { priority: 1, health: 0.90, latency: 4000, contextWindow: 0, cost: 0, throughput: 1 },
+  'a1111': { priority: 1, health: 0.90, latency: 4000, contextWindow: 0, cost: 0, throughput: 1 },
+  'sdapi': { priority: 1, health: 0.90, latency: 4000, contextWindow: 0, cost: 0, throughput: 1 },
+  // Priority 2: Cloud Second
+  'gemini': { priority: 2, health: 0.95, latency: 400, contextWindow: 1048576, cost: 1, throughput: 100 },
+  'anthropic': { priority: 2, health: 0.95, latency: 500, contextWindow: 200000, cost: 3, throughput: 80 },
+  'openai': { priority: 2, health: 0.95, latency: 450, contextWindow: 128000, cost: 2, throughput: 90 },
+  'groq': { priority: 2, health: 0.95, latency: 100, contextWindow: 32768, cost: 0.5, throughput: 800 },
+  'cloudflare': { priority: 2, health: 0.95, latency: 150, contextWindow: 8192, cost: 0.1, throughput: 300 },
+  // Priority 3: Fallback Third
+  'openrouter': { priority: 3, health: 0.90, latency: 800, contextWindow: 128000, cost: 1.5, throughput: 40 },
+  'replicate': { priority: 3, health: 0.85, latency: 3000, contextWindow: 8192, cost: 2, throughput: 20 },
+  'mission': { priority: 1, health: 0.95, latency: 100, contextWindow: 8192, cost: 0, throughput: 100 },
 };
 
 export interface ProviderScoreContext {
@@ -39,6 +48,14 @@ export interface ProviderScoreContext {
   latency: number;
   cost: number;
   quality: number;
+}
+
+export interface RealMetrics {
+  health: number;
+  latency: number;
+  throughput: number;
+  errorRate: number;
+  callCount: number;
 }
 
 export class ProviderRegistry {
@@ -80,19 +97,62 @@ export class ProviderRegistry {
     return { ...this.defaults };
   }
 
+  private static metricsFetcher: ((providerName: string) => Promise<RealMetrics | null>) | null = null;
+
+  /**
+   * Define a função que busca métricas reais do banco de dados.
+   * Deve ser configurado pelo backend ao inicializar.
+   */
+  public static setMetricsFetcher(fetcher: (providerName: string) => Promise<RealMetrics | null>): void {
+    ProviderRegistry.metricsFetcher = fetcher;
+  }
+
+  /**
+   * Busca métricas reais do RequestLog para um provider.
+   * Retorna null se não houver dados suficientes (fallback será usado).
+   */
+  private async getRealMetrics(providerName: string): Promise<RealMetrics | null> {
+    const fetcher = ProviderRegistry.metricsFetcher;
+    if (!fetcher) return null;
+    
+    try {
+      return await fetcher(providerName);
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Pipeline Enterprise v2.0:
    * Capability ➔ Priority ➔ Health ➔ Latency ➔ Context Window ➔ Preço ➔ Throughput ➔ Provider
    */
-  public calculateScore(provider: AIProvider, _capability: Capability): number {
-    const metrics = mockMetrics[provider.name] || {
-      priority: 3, // assume fallback
-      health: 1.0,
-      latency: 1000,
-      contextWindow: 4096,
-      cost: 5,
-      throughput: 10
-    };
+  public async calculateScore(provider: AIProvider, _capability: Capability): Promise<number> {
+    // Tenta obter métricas reais primeiro
+    const realMetrics = await this.getRealMetrics(provider.name);
+    
+    let metrics: ProviderMetrics;
+    
+    if (realMetrics && realMetrics.callCount >= 5) {
+      // Usa métricas reais se tiver pelo menos 5 chamadas
+      metrics = {
+        priority: fallbackMetrics[provider.name]?.priority ?? 3,
+        health: realMetrics.health,
+        latency: realMetrics.latency,
+        contextWindow: fallbackMetrics[provider.name]?.contextWindow ?? 4096,
+        cost: fallbackMetrics[provider.name]?.cost ?? 5,
+        throughput: realMetrics.throughput,
+      };
+    } else {
+      // Usa fallback para providers novos ou sem histórico
+      metrics = fallbackMetrics[provider.name] || {
+        priority: 3, // assume fallback
+        health: 1.0,
+        latency: 1000,
+        contextWindow: 4096,
+        cost: 5,
+        throughput: 10
+      };
+    }
 
     // Filtro rígido de health (se menor que 0.5, penaliza absurdamente)
     if (metrics.health < 0.5) return -9999;
@@ -155,7 +215,32 @@ export class ProviderRegistry {
       );
     }
 
-    candidates.sort((a, b) => this.calculateScore(b, capability) - this.calculateScore(a, capability));
+    // calculateScore agora é async - precisamos de abordagem síncrona para sort
+    // Usamos fallbackMetrics diretamente aqui para manter compatibilidade síncrona
+    const getSyncScore = (provider: AIProvider): number => {
+      const metrics = fallbackMetrics[provider.name] || {
+        priority: 3,
+        health: 1.0,
+        latency: 1000,
+        contextWindow: 4096,
+        cost: 5,
+        throughput: 10
+      };
+      
+      if (metrics.health < 0.5) return -9999;
+      
+      let score = 10000;
+      score += (4 - metrics.priority) * 1000;
+      score += metrics.health * 500;
+      score -= metrics.latency;
+      score += (metrics.contextWindow / 10000);
+      score -= (metrics.cost * 100);
+      score += metrics.throughput;
+      
+      return score;
+    };
+    
+    candidates.sort((a, b) => getSyncScore(b) - getSyncScore(a));
     return candidates[0];
   }
 
@@ -172,8 +257,30 @@ export class ProviderRegistry {
         const rankA = rank.get(a.name) ?? Number.MAX_SAFE_INTEGER;
         const rankB = rank.get(b.name) ?? Number.MAX_SAFE_INTEGER;
         if (rankA !== rankB) return rankA - rankB;
-        // Fallback to score
-        return this.calculateScore(b, capability) - this.calculateScore(a, capability);
+        // Fallback to sync score
+        const getSyncScore = (provider: AIProvider): number => {
+          const metrics = fallbackMetrics[provider.name] || {
+            priority: 3,
+            health: 1.0,
+            latency: 1000,
+            contextWindow: 4096,
+            cost: 5,
+            throughput: 10
+          };
+          
+          if (metrics.health < 0.5) return -9999;
+          
+          let score = 10000;
+          score += (4 - metrics.priority) * 1000;
+          score += metrics.health * 500;
+          score -= metrics.latency;
+          score += (metrics.contextWindow / 10000);
+          score -= (metrics.cost * 100);
+          score += metrics.throughput;
+          
+          return score;
+        };
+        return getSyncScore(b) - getSyncScore(a);
       });
     return [primary, ...rest];
   }

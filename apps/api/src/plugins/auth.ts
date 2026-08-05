@@ -60,7 +60,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
           tenantId: record.tenantId,
           apiKeyId: record.id,
           projectId: record.projectId ?? undefined,
-          scopes: record.scopes.split(',').map((scope) => scope.trim()).filter(Boolean),
+          scopes: record.scopes.split(',').map((scope: string) => scope.trim()).filter(Boolean),
         };
         await redis.setex(cacheId, API_KEY_CACHE_TTL, JSON.stringify(ctx)).catch(() => undefined);
         void prisma.apiKey.update({ where: { id: record.id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);

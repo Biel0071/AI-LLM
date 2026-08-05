@@ -449,7 +449,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   app.post('/history', { config: rlText, schema: { tags: ['v1', 'image'] } }, async (req) => {
     const query = z.object({ limit: z.number().int().min(1).max(200).default(50) }).parse(req.body ?? {});
     const images = await prisma.image.findMany({ where: { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId }, orderBy: { createdAt: 'desc' }, take: query.limit });
-    return { success: true, images: images.map((image) => ({ ...image, seed: image.seed?.toString() })) };
+    return { success: true, images: images.map((image: any) => ({ ...image, seed: image.seed?.toString() })) };
   });
 
   app.post('/workflow', { config: rlText, schema: { tags: ['v1', 'image'] } }, async (req, reply) => {

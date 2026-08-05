@@ -181,7 +181,7 @@ async function pollDueConnectors(): Promise<void> {
       take: env.REVERSE_POLL_CONCURRENCY,
       select: { id: true },
     });
-    await Promise.allSettled(due.map(({ id }) => pollReverseConnector(id)));
+    await Promise.allSettled(due.map((item: typeof due[0]) => pollReverseConnector(item.id)));
   } catch (error) {
     logger.error({ error }, 'reverse poller tick failed');
   } finally {

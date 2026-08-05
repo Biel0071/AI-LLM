@@ -152,7 +152,10 @@ export async function execute<T>(
   
   for (const candidate of candidates) {
     try {
-      metrics.providerScore.set({ provider: candidate.name, capability }, registry.calculateScore(candidate, capability));
+      // calculateScore agora é async - usamos Promise para não bloquear
+      void registry.calculateScore(candidate, capability).then(score => {
+        metrics.providerScore.set({ provider: candidate.name, capability }, score);
+      });
     } catch { /* ignore */ }
   }
   const useCache = ctx.cache !== false && effectiveRequest.cache !== false;

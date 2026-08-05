@@ -202,7 +202,7 @@ async function learnExecutionSuccess(
       successCount: { increment: 1 }, qualityTotal: { increment: quality },
       durationTotalMs: { increment: BigInt(durationMs) }, lastUsedAt: new Date(),
     },
-  }).catch((error) => logger.warn({ queue, error }, 'execution memory learning failed'));
+  }).catch((error: unknown) => logger.warn({ queue, error }, 'execution memory learning failed'));
 }
 
 async function learnExecutionFailure(queue: string, data: Record<string, any>): Promise<void> {
@@ -218,7 +218,7 @@ async function learnExecutionFailure(queue: string, data: Record<string, any>): 
       context: context as object, provider: route.provider, model: route.model, failureCount: 1,
     },
     update: { failureCount: { increment: 1 }, lastUsedAt: new Date() },
-  }).catch((error) => logger.warn({ queue, error }, 'execution memory failure learning failed'));
+  }).catch((error: unknown) => logger.warn({ queue, error }, 'execution memory failure learning failed'));
 }
 function clampQuality(value: unknown): number {
   const score = Number(value);
@@ -456,7 +456,7 @@ async function heartbeat(): Promise<void> {
       create: { hostname, queues: queueNames.join(','), concurrency: effectiveConcurrency },
       update: { lastHeartbeat: new Date(), concurrency: effectiveConcurrency },
     })
-    .catch((err) => logger.warn({ err }, 'heartbeat failed'));
+    .catch((err: unknown) => logger.warn({ err }, 'heartbeat failed'));
 }
 let heartbeatRunning = false;
 async function safeHeartbeat(): Promise<void> {

@@ -49,7 +49,7 @@ export async function saveProviderConfig(form: ProviderForm): Promise<void> {
 
 export async function listProviderConfigs() {
   const rows = await prisma.providerConfig.findMany({ orderBy: { name: 'asc' } });
-  return rows.map((row) => {
+  return rows.map((row: typeof rows[0]) => {
     const settings = (row.settings ?? {}) as StoredSettings;
     return { ...row, settings: { ...settings, apiKeyEncrypted: undefined }, hasApiKey: Boolean(settings.apiKeyEncrypted) };
   });
