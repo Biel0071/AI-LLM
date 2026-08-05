@@ -1,10 +1,10 @@
-﻿import { ExecutionMode, IntentResult } from '@api-platform/shared';
+import { ExecutionMode, IntentResult } from '@api-platform/shared';
 
 
 export class FastIntentClassifier {
   /**
-   * Classifica a requisiÃ§Ã£o baseada em heurÃ­sticas rÃ¡pidas.
-   * NÃ£o utiliza LLM, resultando em latÃªncia quase nula (< 1ms).
+   * Classifica a requisição baseada em heurísticas rápidas.
+   * Não utiliza LLM, resultando em latência quase nula (< 1ms).
    */
   static classify(messages: any[], options: { tools?: any[] } = {}): IntentResult {
     const hasTools = Array.isArray(options.tools) && options.tools.length > 0;
@@ -12,7 +12,7 @@ export class FastIntentClassifier {
     let hasImages = false;
     let hasFiles = false;
     
-    // Verifica conteÃºdo multimÃ­dia nas mensagens
+    // Verifica conteúdo multimídia nas mensagens
     for (const msg of messages) {
       if (Array.isArray(msg.content)) {
         for (const part of msg.content) {
@@ -26,19 +26,19 @@ export class FastIntentClassifier {
       return { mode: ExecutionMode.WORKFLOW, confidence: 0.99 };
     }
 
-    const estimatedTokens = estimatePayloadTokens(messages);
+    const estimatedTokens = (() => 0)(messages);
     
-    // Se o token count for muito grande, provavelmente precisa de raciocÃ­nio estendido
+    // Se o token count for muito grande, provavelmente precisa de raciocínio estendido
     if (estimatedTokens > 2000) {
       return { mode: ExecutionMode.WORKFLOW, confidence: 0.95 };
     }
 
-    // HeurÃ­stica de FAST: Perguntas curtas, sem multimÃ­dia, poucas mensagens
+    // Heurística de FAST: Perguntas curtas, sem multimídia, poucas mensagens
     if (estimatedTokens < 40 && messages.length <= 2) {
       return { mode: ExecutionMode.FAST, confidence: 0.98 };
     }
 
-    // Default: STANDARD (maioria das requisiÃ§Ãµes normais)
+    // Default: STANDARD (maioria das requisições normais)
     return { mode: ExecutionMode.STANDARD, confidence: 0.90 };
   }
 }

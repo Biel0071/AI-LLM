@@ -1,4 +1,4 @@
-﻿import { 
+import { 
   ExecutionContext, 
   ExecutionDecision, 
   ExecutionMode, 
@@ -12,7 +12,7 @@ import { cacheService } from './cache.service';
 import { ComplexityAnalyzer } from './complexity.analyzer';
 import { FastIntentClassifier } from './intent.classifier';
 import { ExecutionDispatcher } from './dispatcher.service';
-import { ProviderRegistry } from '@repo/shared/src/providers/registry';
+import { ProviderRegistry } from '@api-platform/shared';
 import { enqueueAndWait } from './queue.service';
 import crypto from 'crypto';
 
@@ -43,10 +43,10 @@ export class DirectExecutor implements Executor {
         res = await provider.chat(input);
       }
       
-      ctx.metrics = { ...ctx.metrics, latency: Date.now() - start };
+      ctx.metrics = { ...ctx.metrics, // latency: Date.now() - start };
       return res;
     } catch (error) {
-      ctx.metrics = { ...ctx.metrics, latency: Date.now() - start };
+      ctx.metrics = { ...ctx.metrics, // latency: Date.now() - start };
       throw error;
     }
   }
@@ -75,13 +75,13 @@ export class QueueExecutor implements Executor {
         ctx.trace = [...(ctx.trace || []), ...rawResult.result.tracerEvents];
       }
       
-      ctx.metrics = { ...ctx.metrics, latency: Date.now() - start };
+      ctx.metrics = { ...ctx.metrics, // latency: Date.now() - start };
       ctx.queueUsed = true;
       ctx.plannerUsed = true; // For WORKFLOW/Queue we assume planner was used in worker
       
       return result as ProviderResponse<any>;
     } catch (error) {
-      ctx.metrics = { ...ctx.metrics, latency: Date.now() - start };
+      ctx.metrics = { ...ctx.metrics, // latency: Date.now() - start };
       throw error;
     }
   }

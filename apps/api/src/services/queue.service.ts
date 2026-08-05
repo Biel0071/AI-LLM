@@ -1,4 +1,4 @@
-﻿import { Queue, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents } from 'bullmq';
 import { env } from '../config/env';
 import { createBullConnection } from '../lib/redis';
 import { prisma } from '../lib/prisma';

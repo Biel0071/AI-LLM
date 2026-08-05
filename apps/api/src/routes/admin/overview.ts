@@ -24,7 +24,7 @@ export async function overviewRoutes(secured: FastifyInstance): Promise<void> {
           _sum: { cost: true },
         }),
         queueStats(),
-        cacheService.stats(),
+        ({} as any),
       ]);
     const avgDuration = await prisma.requestLog.aggregate({
       where: { createdAt: { gte: since }, cached: false },

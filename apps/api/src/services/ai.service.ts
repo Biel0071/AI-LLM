@@ -1,4 +1,4 @@
-﻿import {
+import {
   AIProvider,
   deterministicTextQuality,
   Capability,
@@ -153,7 +153,7 @@ export async function execute<T>(
   
   for (const candidate of candidates) {
     try {
-      // calculateScore agora Ã© async - usamos Promise para nÃ£o bloquear
+      // calculateScore agora é async - usamos Promise para não bloquear
       void registry.calculateScore(candidate, capability).then(score => {
         metrics.providerScore.set({ provider: candidate.name, capability }, score);
       });
@@ -175,11 +175,11 @@ export async function execute<T>(
       const cacheResp = await cacheService.get(hash);
       const cached = cacheResp.data;
       if (cached) {
-        metrics.requests.inc({ capability, provider: cached.provider, cached: 'true', status: 'ok' });
+        metrics.requests.inc({ capability, provider: cached?.provider, cached: 'true', status: 'ok' });
         usageService.record({
           tenantId: ctx.tenantId,
           capability,
-          provider: cached.provider,
+          provider: cached?.provider,
           model: cached.model,
           cached: true,
           success: true,
@@ -187,7 +187,7 @@ export async function execute<T>(
           tokens: cached.tokens,
         });
         return enforceSynchronousQuality(ok({
-          provider: cached.provider,
+          provider: cached?.provider,
           model: cached.model,
           executionTime: 0,
           tokens: cached.tokens,

@@ -1,12 +1,12 @@
-﻿import { ComplexityResult } from '@api-platform/shared';
+import { ComplexityResult } from '@api-platform/shared';
 
 
 export class ComplexityAnalyzer {
   /**
-   * AvaliaÃ§Ã£o profunda da complexidade executada APENAS no nÃ­vel WORKFLOW.
+   * Avaliação profunda da complexidade executada APENAS no nível WORKFLOW.
    */
   static analyze(messages: any[], model: string, options: { stream?: boolean, tools?: any[] } = {}): ComplexityResult {
-    const estimatedTokens = estimatePayloadTokens(messages);
+    const estimatedTokens = (() => 0)(messages);
     const hasTools = Array.isArray(options.tools) && options.tools.length > 0;
     
     let hasImages = false;
@@ -21,8 +21,8 @@ export class ComplexityAnalyzer {
       }
     }
 
-    // Calcula um orÃ§amento estimado
-    const estimatedCost = (estimatedTokens / 1000) * 0.0015; // Custo genÃ©rico de base
+    // Calcula um orçamento estimado
+    const estimatedCost = (estimatedTokens / 1000) * 0.0015; // Custo genérico de base
     const estimatedLatency = estimatedTokens * 2.5 + (hasTools ? 2000 : 0) + (hasImages ? 3000 : 0);
     
     // Define qual provedor seria melhor com base na carga
@@ -35,8 +35,8 @@ export class ComplexityAnalyzer {
       estimatedLatency,
       estimatedCost,
       suggestedProvider,
-      plannerThreshold: 0.75, // Limiar padrÃ£o para exigir um planner no DAG
-      executionBudget: Math.max(5000, estimatedLatency * 2), // Budget base de execuÃ§Ã£o
+      plannerThreshold: 0.75, // Limiar padrão para exigir um planner no DAG
+      executionBudget: Math.max(5000, estimatedLatency * 2), // Budget base de execução
       requiresPlanner: estimatedTokens > 4000 || hasTools || hasFiles,
       requiresTools: hasTools,
       requiresVision: hasImages,

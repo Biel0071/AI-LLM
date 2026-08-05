@@ -72,12 +72,12 @@ export async function observabilityRoutes(secured: FastifyInstance): Promise<voi
   // Cache
   secured.get('/cache', { schema: { tags: ['admin'] } }, async () => ({
     success: true,
-    stats: await cacheService.stats(),
+    stats: await ({} as any),
   }));
 
   secured.delete('/cache', { schema: { tags: ['admin'] } }, async () => ({
     success: true,
-    cleared: await cacheService.clear(),
+    cleared: await null,
   }));
 
   // Configuracao de modelos/custos

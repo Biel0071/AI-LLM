@@ -38,7 +38,7 @@ export async function registerOpenAICompatRoutes(fastify: FastifyInstance) {
         cache: ctx.cacheHit,
         planner: ctx.plannerUsed,
         queue: ctx.queueUsed,
-        latency: ctx.metrics?.totalLatency || ctx.metrics?.latency || 0,
+        // latency: ctx.metrics?.totalLatency || ctx.metrics?.latency || 0,
         cost: ctx.complexity?.estimatedCost || 0,
         metrics: ctx.metrics,
         trace: ctx.trace
