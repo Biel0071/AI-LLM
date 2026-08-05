@@ -103,7 +103,7 @@ async function runWithFallback<T>(
   task?: TaskHint,
 ): Promise<StandardResponse<T>> {
   let lastError: unknown;
-  const candidates = registry.resolveCandidates(capability, requested, fallbackOrder);
+  const candidates = await registry.resolveCandidates(capability, requested, fallbackOrder);
   const ready = candidates.filter((provider) => !providerCircuit.isOpen(`${provider.name}:${capability}`));
   const runnable = ready.length ? ready : candidates.slice(0, 1);
   for (const provider of runnable) {
@@ -177,7 +177,7 @@ export const imageProcessor: ProcessorFn = async (job, registry) => {
   const data = job.data as Record<string, any>;
   await releaseOllamaMemoryForImage();
   if (data.__kind === 'multiangle') {
-    const provider = registry.resolve('image', data.provider) as any;
+    const provider = await registry.resolve('image', data.provider) as any;
     return run(provider, async () => {
       const count = Math.min(Math.max(Number(data.count) || 5, 1), 8);
       const elevation = Number(data.elevation) || 0;
@@ -203,7 +203,7 @@ export const imageProcessor: ProcessorFn = async (job, registry) => {
     });
   }
   if (data.__kind === 'gallery') {
-    const provider = registry.resolve('image', data.provider);
+    const provider = await registry.resolve('image', data.provider);
     return run(provider, async () => {
       const requestedCount = Math.min(Math.max(Number(data.count) || 5, 1), 10);
       const configuredMax = Math.min(Math.max(Number(process.env.GALLERY_MAX_IMAGES_PER_JOB) || 10, 1), 10);

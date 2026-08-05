@@ -184,7 +184,7 @@ export class ProviderRegistry {
    * Resolve o provider para uma capacidade baseado em SCORE:
    * provider explicito na requisicao > default configurado > provider com maior SCORE.
    */
-  resolve(capability: Capability, requestedProvider?: string): AIProvider {
+  async resolve(capability: Capability, requestedProvider?: string): Promise<AIProvider> {
     if (requestedProvider && requestedProvider.toLowerCase() !== 'auto') {
       const provider = this.get(requestedProvider);
       if (!provider.capabilities.includes(capability)) {
@@ -204,7 +204,7 @@ export class ProviderRegistry {
       if (provider.capabilities.includes(capability)) return provider;
     }
     
-    // Scored resolution
+    // Scored resolution - agora usa calculateScore assíncrono com métricas reais
     const candidates = this.list().filter((p) => p.capabilities.includes(capability));
     if (candidates.length === 0) {
       throw new ProviderError(
@@ -215,41 +215,24 @@ export class ProviderRegistry {
       );
     }
 
-    // calculateScore agora é async - precisamos de abordagem síncrona para sort
-    // Usamos fallbackMetrics diretamente aqui para manter compatibilidade síncrona
-    const getSyncScore = (provider: AIProvider): number => {
-      const metrics = fallbackMetrics[provider.name] || {
-        priority: 3,
-        health: 1.0,
-        latency: 1000,
-        contextWindow: 4096,
-        cost: 5,
-        throughput: 10
-      };
-      
-      if (metrics.health < 0.5) return -9999;
-      
-      let score = 10000;
-      score += (4 - metrics.priority) * 1000;
-      score += metrics.health * 500;
-      score -= metrics.latency;
-      score += (metrics.contextWindow / 10000);
-      score -= (metrics.cost * 100);
-      score += metrics.throughput;
-      
-      return score;
-    };
+    // Calcula scores assíncronos usando métricas reais do RequestLog
+    const scoredCandidates = await Promise.all(
+      candidates.map(async (provider) => ({
+        provider,
+        score: await this.calculateScore(provider, capability),
+      }))
+    );
     
-    candidates.sort((a, b) => getSyncScore(b) - getSyncScore(a));
-    return candidates[0];
+    scoredCandidates.sort((a, b) => b.score - a.score);
+    return scoredCandidates[0].provider;
   }
 
-  resolveCandidates(
+  async resolveCandidates(
     capability: Capability,
     requestedProvider?: string,
     fallbackOrder: string[] = [],
-  ): AIProvider[] {
-    const primary = this.resolve(capability, requestedProvider);
+  ): Promise<AIProvider[]> {
+    const primary = await this.resolve(capability, requestedProvider);
     const rank = new Map(fallbackOrder.map((name, index) => [name, index]));
     const rest = this.list()
       .filter((p) => p.name !== primary.name && p.capabilities.includes(capability))
@@ -257,30 +240,10 @@ export class ProviderRegistry {
         const rankA = rank.get(a.name) ?? Number.MAX_SAFE_INTEGER;
         const rankB = rank.get(b.name) ?? Number.MAX_SAFE_INTEGER;
         if (rankA !== rankB) return rankA - rankB;
-        // Fallback to sync score
-        const getSyncScore = (provider: AIProvider): number => {
-          const metrics = fallbackMetrics[provider.name] || {
-            priority: 3,
-            health: 1.0,
-            latency: 1000,
-            contextWindow: 4096,
-            cost: 5,
-            throughput: 10
-          };
-          
-          if (metrics.health < 0.5) return -9999;
-          
-          let score = 10000;
-          score += (4 - metrics.priority) * 1000;
-          score += metrics.health * 500;
-          score -= metrics.latency;
-          score += (metrics.contextWindow / 10000);
-          score -= (metrics.cost * 100);
-          score += metrics.throughput;
-          
-          return score;
-        };
-        return getSyncScore(b) - getSyncScore(a);
+        // Fallback to priority-based sorting for sync context
+        const priorityA = fallbackMetrics[a.name]?.priority ?? 3;
+        const priorityB = fallbackMetrics[b.name]?.priority ?? 3;
+        return priorityA - priorityB;
       });
     return [primary, ...rest];
   }

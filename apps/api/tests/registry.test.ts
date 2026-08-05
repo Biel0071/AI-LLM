@@ -14,38 +14,38 @@ describe('ProviderRegistry', () => {
     expect(registry.has('claude')).toBe(false); // sem ANTHROPIC_API_KEY
   });
 
-  it('resolve por capacidade respeitando o default', () => {
+  it('resolve por capacidade respeitando o default', async () => {
     const registry = createRegistryFromEnv({
       OLLAMA_BASE_URL: 'http://localhost:11434',
       OPENAI_API_KEY: 'sk-test',
       DEFAULT_CHAT_PROVIDER: 'openai',
     });
-    expect(registry.resolve('chat').name).toBe('openai');
-    expect(registry.resolve('chat', 'ollama').name).toBe('ollama');
+    expect((await registry.resolve('chat')).name).toBe('openai');
+    expect((await registry.resolve('chat', 'ollama')).name).toBe('ollama');
   });
 
-  it('trata provider auto como roteamento automatico', () => {
+  it('trata provider auto como roteamento automatico', async () => {
     const registry = createRegistryFromEnv({
       OLLAMA_BASE_URL: 'http://localhost:11434',
       COMFYUI_BASE_URL: 'http://localhost:8188',
     });
-    expect(registry.resolve('chat', 'auto').name).toBe('ollama');
-    expect(registry.resolve('image', 'AUTO').name).toBe('comfyui');
+    expect((await registry.resolve('chat', 'auto')).name).toBe('ollama');
+    expect((await registry.resolve('image', 'AUTO')).name).toBe('comfyui');
   });
 
-  it('cai no primeiro provider compativel quando nao ha default', () => {
+  it('cai no primeiro provider compativel quando nao ha default', async () => {
     const registry = new ProviderRegistry();
     registry.register(new OllamaProvider({ baseUrl: 'http://x' }));
-    expect(registry.resolve('chat').name).toBe('ollama');
+    expect((await registry.resolve('chat')).name).toBe('ollama');
   });
 
-  it('erro claro quando provider nao suporta a capacidade', () => {
+  it('erro claro quando provider nao suporta a capacidade', async () => {
     const registry = createRegistryFromEnv({ COMFYUI_BASE_URL: 'http://localhost:8188' });
-    expect(() => registry.resolve('text', 'comfyui')).toThrow(/does not support/);
+    await expect(async () => await registry.resolve('text', 'comfyui')).rejects.toThrow(/does not support/);
   });
 
-  it('erro claro quando nenhum provider atende a capacidade', () => {
+  it('erro claro quando nenhum provider atende a capacidade', async () => {
     const registry = new ProviderRegistry();
-    expect(() => registry.resolve('image')).toThrow(/no provider registered/);
+    await expect(registry.resolve('image')).rejects.toThrow(/no provider registered/);
   });
 });
