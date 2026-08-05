@@ -1,4 +1,4 @@
-import { Queue, QueueEvents } from 'bullmq';
+﻿import { Queue, QueueEvents } from 'bullmq';
 import { env } from '../config/env';
 import { createBullConnection } from '../lib/redis';
 import { prisma } from '../lib/prisma';
@@ -100,7 +100,7 @@ export async function enqueue(
     });
     if (existing) return existing.id;
 
-    const claimed = await prisma.$transaction(async (tx: typeof prisma) => {
+    const claimed = await prisma.$transaction(async (tx: any) => {
       // Serializa somente requests com o mesmo hash. Isso fecha a janela em
       // que um lote concorrente criava varios jobs iguais antes do primeiro
       // INSERT ficar visivel, desperdicando provider/tokens.
@@ -281,3 +281,4 @@ export async function enqueueWithTiming(
   }
   return { jobId, queue };
 }
+

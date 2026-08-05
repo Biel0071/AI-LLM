@@ -1,4 +1,4 @@
-import {
+﻿import {
   AIProvider,
   deterministicTextQuality,
   Capability,
@@ -153,7 +153,7 @@ export async function execute<T>(
   
   for (const candidate of candidates) {
     try {
-      // calculateScore agora é async - usamos Promise para não bloquear
+      // calculateScore agora Ã© async - usamos Promise para nÃ£o bloquear
       void registry.calculateScore(candidate, capability).then(score => {
         metrics.providerScore.set({ provider: candidate.name, capability }, score);
       });
@@ -170,10 +170,10 @@ export async function execute<T>(
     request.model = candidateIndex === 0 ? effectiveRequest.model : clientModel;
     const requestedModel = request.model ?? 'provider-default';
     const modelKey = `${requestedModel}:${process.env.MODEL_CONFIG_VERSION ?? '1'}`;
-    const hash = cacheService.buildKey(capability, provider.name, modelKey, cacheInput);
-
+    const hash = cacheService.generateKey({ model: modelKey, tenant: ctx.tenantId, messages: (cacheInput as any).messages, prompt: (cacheInput as any).prompt });
     if (useCache) {
-      const cached = await cacheService.get(hash);
+      const cacheResp = await cacheService.get(hash);
+      const cached = cacheResp.data;
       if (cached) {
         metrics.requests.inc({ capability, provider: cached.provider, cached: 'true', status: 'ok' });
         usageService.record({
@@ -263,7 +263,7 @@ export async function execute<T>(
         const promptText = typeof request.prompt === 'string'
           ? request.prompt
           : JSON.stringify(request.messages ?? request.input ?? '').slice(0, 10_000);
-        await cacheService.set({ hash, capability, prompt: promptText, response });
+        await cacheService.set(hash, response as any);
       }
       return response;
     } catch (err) {
@@ -292,3 +292,4 @@ export async function execute<T>(
 
   throw lastError ?? new Error(`No provider available for ${capability}`);
 }
+
