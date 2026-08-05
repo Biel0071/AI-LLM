@@ -12,31 +12,78 @@ interface Scenario {
 }
 
 export interface MetricData {
-  latency: number;
+  latency: number; // TTLT ou end-to-end
+  ttfb?: number;
+  ttft?: number;
+  chunks?: number;
+  tokens?: number;
   success: boolean;
   cacheHit: boolean;
   provider: string;
   mode: string;
   statusCode: number;
   error?: string;
+  gatewayTrace?: any;
 }
 
 export interface BenchmarkReport {
+  // To be used by report.ts
   timestamp: string;
-  scenarios: Record<string, {
-    requests: number;
-    success: number;
-    failures: number;
-    avg: number;
-    median: number;
-    p95: number;
-    p99: number;
-    max: number;
-    cacheHitCount: number;
-    cacheHitRatio: number;
-    providers: Record<string, number>;
-    modes: Record<string, number>;
-  }>;
+}
+
+async function consumeStream(res: Response, start: number): Promise<{ success: boolean, gatewayTrace: any, ttft?: number, ttfb?: number, chunks: number, tokens: number, error: string }> {
+  let success = false;
+  let gatewayTrace: any = {};
+  let ttft: number | undefined;
+  let ttfb: number | undefined;
+  let chunks = 0;
+  let tokens = 0;
+  let error = '';
+
+  const reader = res.body?.getReader();
+  if (!reader) {
+     return { success: false, gatewayTrace, chunks: 0, tokens: 0, error: 'No reader' };
+  }
+  
+  const decoder = new TextDecoder();
+  
+  try {
+    let done = false;
+    while (!done) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+      if (value) {
+        if (!ttfb) ttfb = Date.now() - start;
+        
+        const chunkStr = decoder.decode(value, { stream: true });
+        const lines = chunkStr.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.substring(6).trim();
+            if (dataStr === '[DONE]') {
+               success = true;
+            } else if (dataStr.startsWith('{')) {
+               try {
+                 const data = JSON.parse(dataStr);
+                 if (data.requestId && data.mode) {
+                   gatewayTrace = data; // Gateway Trace via SSE (usually first chunk)
+                 } else if (data.choices && data.choices[0]?.delta?.content) {
+                   if (!ttft) ttft = Date.now() - start;
+                   chunks++;
+                   tokens++; // Simplification: 1 chunk = 1 token roughly, or use usage event
+                 }
+               } catch(e) {}
+            }
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    error = err.message;
+  }
+  
+  return { success, gatewayTrace, ttft, ttfb, chunks, tokens, error };
 }
 
 async function runScenario(scenario: Scenario): Promise<MetricData[]> {
@@ -58,6 +105,11 @@ async function runScenario(scenario: Scenario): Promise<MetricData[]> {
       let error = '';
       let gatewayTrace: any = {};
       
+      let ttfb: number | undefined;
+      let ttft: number | undefined;
+      let chunks = 0;
+      let tokens = 0;
+      
       try {
         const res = await fetch(API_URL, {
           method: 'POST',
@@ -71,24 +123,23 @@ async function runScenario(scenario: Scenario): Promise<MetricData[]> {
         statusCode = res.status;
         
         if (payload.stream) {
-          // Consume the SSE stream
-          const text = await res.text();
-          // Extremely basic parse to find gateway trace (which is the first event)
-          const gatewayMatch = text.match(/event:\s*gateway\ndata:\s*({.*?})\n\n/);
-          if (gatewayMatch && gatewayMatch[1]) {
-            gatewayTrace = JSON.parse(gatewayMatch[1]);
-          }
-          if (text.includes('data: [DONE]')) success = true;
-          else {
-             success = false;
-             error = 'Stream incomplete';
-          }
+          const streamResult = await consumeStream(res as any, start);
+          success = streamResult.success;
+          gatewayTrace = streamResult.gatewayTrace;
+          ttft = streamResult.ttft;
+          ttfb = streamResult.ttfb;
+          chunks = streamResult.chunks;
+          tokens = streamResult.tokens;
+          error = streamResult.error;
         } else {
           const data = await res.json();
           if (data._gateway) {
             gatewayTrace = data._gateway;
           }
-          if (res.ok) success = true;
+          if (res.ok) {
+            success = true;
+            tokens = data.usage?.total_tokens || 0;
+          }
           else error = data?.error?.message || 'Unknown Error';
         }
       } catch (err: any) {
@@ -99,13 +150,18 @@ async function runScenario(scenario: Scenario): Promise<MetricData[]> {
       const latency = Date.now() - start;
       
       metrics.push({
-        latency,
+        latency, // TTLT if stream
+        ttfb,
+        ttft,
+        chunks,
+        tokens,
         success,
         statusCode,
         error,
         cacheHit: gatewayTrace.cache !== 'MISS' && gatewayTrace.cache !== undefined,
         provider: gatewayTrace.provider || 'unknown',
-        mode: gatewayTrace.mode || 'unknown'
+        mode: gatewayTrace.mode || 'unknown',
+        gatewayTrace
       });
       
       if ((idx + 1) % 50 === 0) {
@@ -130,7 +186,7 @@ async function main() {
     const filePath = path.join(scenariosDir, file);
     const scenario: Scenario = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     
-    // Aquecimento (Warmup - faz o cache funcionar para as proximas chamadas)
+    // Aquecimento
     console.log(`[+] Warming up ${scenario.name}...`);
     try {
        await fetch(API_URL, {

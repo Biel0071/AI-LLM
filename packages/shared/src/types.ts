@@ -184,6 +184,57 @@ export interface ExecutionDecision {
   reason: string;
 }
 
+export interface TraceEvent {
+  timestamp: number;
+  component: string;
+  type: string;
+  details?: Record<string, any>;
+}
+
+export interface PlannerMetrics {
+  startedAt?: number;
+  finishedAt?: number;
+  latency: number;
+  strategy: string;
+  nodesCreated: number;
+  depth: number;
+  complexity: number;
+}
+
+export interface NodeMetric {
+  nodeId: string;
+  provider: string;
+  latency: number;
+  retries: number;
+  fallback: boolean;
+  tokens: number;
+  status: string;
+}
+
+export interface SchedulerMetrics {
+  startedAt?: number;
+  finishedAt?: number;
+  latency: number;
+  nodesExecuted: number;
+  parallelGroups: number;
+  queueWait?: number;
+  nodeMetrics: NodeMetric[];
+}
+
+export interface ComposerMetrics {
+  startedAt?: number;
+  finishedAt?: number;
+  latency: number;
+}
+
+export interface ExecutionMetrics {
+  planner?: PlannerMetrics;
+  scheduler?: SchedulerMetrics;
+  composer?: ComposerMetrics;
+  totalLatency?: number;
+  cacheHit?: boolean;
+}
+
 export interface ExecutionContext {
   executionId: string;
   traceId: string;
@@ -193,7 +244,8 @@ export interface ExecutionContext {
   cacheHit?: 'L1' | 'L2' | 'MISS';
   decision?: ExecutionDecision;
   dispatch?: DispatchDecision;
-  metrics?: any;
+  metrics?: ExecutionMetrics;
+  trace?: TraceEvent[];
   plannerUsed?: boolean;
   queueUsed?: boolean;
   metadata: Record<string, any>;

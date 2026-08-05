@@ -6,6 +6,7 @@ import {
   ProviderResponse, 
   Capability,
   ProviderError,
+  MemoryExecutionTracer
 } from '@repo/shared';
 import { cacheService } from './cache.service';
 import { ComplexityAnalyzer } from './complexity.analyzer';
@@ -65,6 +66,14 @@ export class QueueExecutor implements Executor {
       }, {
         tenantId: ctx.tenant
       });
+      const rawResult = result as any;
+      
+      if (rawResult?.result?.metrics) {
+        ctx.metrics = { ...ctx.metrics, ...rawResult.result.metrics };
+      }
+      if (rawResult?.result?.tracerEvents) {
+        ctx.trace = [...(ctx.trace || []), ...rawResult.result.tracerEvents];
+      }
       
       ctx.metrics = { ...ctx.metrics, latency: Date.now() - start };
       ctx.queueUsed = true;
@@ -111,6 +120,7 @@ export class ExecutionGateway {
     const model = payload.model || 'auto';
     const stream = payload.stream === true || forceStream;
     
+    const tracer = new MemoryExecutionTracer();
     const ctx: ExecutionContext = {
       executionId,
       traceId,
@@ -119,10 +129,14 @@ export class ExecutionGateway {
       plannerUsed: false,
       queueUsed: false,
       metadata: { payload },
-      metrics: { startTime: Date.now() }
+      startTime: Date.now()
     };
+    
+    tracer.attachToContext(ctx);
+    tracer.event('start', 'gateway');
 
     // 1. Semantic Prompt Fingerprint & Cache
+    tracer.event('start', 'cache_lookup');
     const cacheKey = cacheService.generateKey({
       model,
       messages,
@@ -139,42 +153,57 @@ export class ExecutionGateway {
       if (cached.hit !== 'MISS' && cached.data) {
         ctx.cacheHit = cached.hit;
         ctx.decision = { mode: ExecutionMode.FAST, transport: ExecutionTransport.DIRECT, stream: false, reason: 'CACHE_HIT' };
-        ctx.metrics.latency = Date.now() - ctx.metrics.startTime;
+        tracer.event('finish', 'cache_lookup', { hit: cached.hit });
+        tracer.event('finish', 'gateway');
         return { ctx, response: ResponseComposer.compose(ctx, cached.data as ProviderResponse<any>) };
       }
     }
+    tracer.event('finish', 'cache_lookup', { hit: 'MISS' });
     
     // 2. Fast Intent Classifier
+    tracer.event('start', 'intent_classifier');
     const intent = FastIntentClassifier.classify(messages, { tools: payload.tools });
     let mode = intent.mode;
+    tracer.event('finish', 'intent_classifier', { mode, confidence: intent.confidence });
     
     // 3. Complexity (only if WORKFLOW)
     if (mode === ExecutionMode.WORKFLOW) {
+      tracer.event('start', 'complexity_analyzer');
       ctx.complexity = ComplexityAnalyzer.analyze(messages, model, { stream, tools: payload.tools });
+      tracer.event('finish', 'complexity_analyzer');
     }
     
     ctx.decision = { mode, transport: ExecutionTransport.DIRECT, stream, reason: `Confidence: ${intent.confidence}` };
     
     // 4. Dispatch Policy
+    tracer.event('start', 'dispatcher');
     ctx.dispatch = ExecutionDispatcher.dispatch(payload, ctx);
+    tracer.event('finish', 'dispatcher', { transport: ctx.dispatch.transport });
     
     // Update transport based on dispatch policy
     ctx.decision.transport = ctx.dispatch.transport;
     
     // 5. Execution
+    tracer.event('start', 'executor', { transport: ctx.decision.transport });
     const executor = ExecutorFactory.getExecutor(ctx.decision.transport);
     const rawResponse = await executor.execute(ctx, payload);
+    tracer.event('finish', 'executor');
     
     // 5. Compose
+    tracer.startComposer();
     const response = ResponseComposer.compose(ctx, rawResponse);
+    tracer.finishComposer();
     
     // 6. Save to Cache
     if (!stream && response && !('stream' in response)) {
       await cacheService.set(cacheKey, response);
     }
     
-    ctx.metrics.endTime = Date.now();
-    ctx.metrics.totalLatency = ctx.metrics.endTime - ctx.metrics.startTime;
+    if (ctx.metrics) {
+      ctx.metrics.totalLatency = Date.now() - (ctx.startTime || Date.now());
+      ctx.metrics.cacheHit = ctx.cacheHit !== 'MISS';
+    }
+    tracer.event('finish', 'gateway');
     
     return { ctx, response };
   }

@@ -1,0 +1,14 @@
+﻿{
+  "name": "WORKFLOW-5",
+  "iterations": 20,
+  "concurrency": 5,
+  "payload": {
+    "model": "auto",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Crie uma historia em 5 partes, parte 1 e parte 2 e parte 3 e parte 4 e parte 5"
+      }
+    ]
+  }
+}

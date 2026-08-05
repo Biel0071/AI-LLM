@@ -39,7 +39,9 @@ export async function registerOpenAICompatRoutes(fastify: FastifyInstance) {
         planner: ctx.plannerUsed,
         queue: ctx.queueUsed,
         latency: ctx.metrics?.totalLatency || ctx.metrics?.latency || 0,
-        cost: ctx.complexity?.estimatedCost || 0
+        cost: ctx.complexity?.estimatedCost || 0,
+        metrics: ctx.metrics,
+        trace: ctx.trace
       };
 
       if ('stream' in response && response.stream) {

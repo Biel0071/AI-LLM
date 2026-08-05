@@ -10,7 +10,7 @@ import type { Job } from 'bullmq';
 import { HybridPlanner } from './planner';
 import { SmartScheduler } from './scheduler';
 import { PromptRenderer } from './prompt-renderer';
-import { ExecutionBudget, ExecutionContext, ExecutionTrace } from '@api-platform/shared';
+import { ExecutionBudget, ExecutionContext, ExecutionTrace, MemoryExecutionTracer } from '@repo/shared';
 import {
   AIProvider,
   Capability,
@@ -491,7 +491,8 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
     maxExecutionTimeMs: 45000
   };
 
-  const planner = new HybridPlanner(budget);
+  const tracer = new MemoryExecutionTracer();
+  const planner = new HybridPlanner(budget, tracer);
   
   // 1. Plan execution
   console.log(`[${executionId}] Start Planning for prompt: "${userText.slice(0, 30)}..."`);
@@ -507,10 +508,11 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
     results: {},
     startTime: Date.now()
   };
+  tracer.attachToContext(context);
 
   // 2. Schedule and execute DAG
   const renderer = new PromptRenderer();
-  const scheduler = new SmartScheduler(context, registry, renderer);
+  const scheduler = new SmartScheduler(context, registry, renderer, tracer);
   
   console.log(`[${executionId}] Start DAG Execution. Nodes: ${plan.nodes.length}`);
   const trace: ExecutionTrace = await scheduler.executePlan();
@@ -521,6 +523,7 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
   
   // 3. Assemble final response
   // If the composer node exists, get its result. Otherwise get the last node.
+  tracer.startComposer();
   const resultsArr = Object.values(context.results || {});
   const successNodes = resultsArr.filter(r => r.status === 'success').length;
   const failNodes = resultsArr.filter(r => r.status === 'failed').length;
@@ -545,6 +548,7 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
   } else {
     throw new Error('DAG executed but produced no results');
   }
+  tracer.finishComposer();
 
   return ok({
     provider: 'orchestrator',
@@ -556,6 +560,8 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
     result: {
       text: finalResult,
       trace,
+      metrics: context.metrics,
+      tracerEvents: context.trace,
       status: finalStatus
     }
   });

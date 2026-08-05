@@ -1,0 +1,14 @@
+﻿{
+  "name": "WORKFLOW-10",
+  "iterations": 10,
+  "concurrency": 2,
+  "payload": {
+    "model": "auto",
+    "messages": [
+      {
+        "role": "user",
+        "content": "A e B e C e D e E e F e G e H e I e J"
+      }
+    ]
+  }
+}

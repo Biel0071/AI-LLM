@@ -41,10 +41,12 @@ export class SmartScheduler {
   constructor(
     private readonly context: ExecutionContext,
     private readonly registry: any,
-    private readonly renderer: PromptRenderer
+    private readonly renderer: PromptRenderer,
+    private readonly tracer?: import('@repo/shared').IExecutionTracer
   ) {}
 
   async executePlan(): Promise<ExecutionTrace> {
+    this.tracer?.startScheduler();
     const { plan, budget, results, startTime: globalStartTime } = this.context as Required<import('@api-platform/shared').ExecutionContext>;
     if (!plan) throw new Error('No plan provided');
 
@@ -58,6 +60,7 @@ export class SmartScheduler {
     let fallbacks = 0;
     let tokensUsed = 0;
     let parallelGroups = 0;
+    const nodeMetrics: import('@repo/shared').NodeMetric[] = [];
     
     const inDegree = new Map<string, number>();
     const dependents = new Map<string, string[]>();
@@ -124,17 +127,29 @@ export class SmartScheduler {
                model: 'auto'
              });
              
+             const nodeLatency = Date.now() - startTime;
              results[nodeId] = {
                 nodeId,
                 status: 'success',
                 result: (res.result as any).message?.content || (res.result as any).text || JSON.stringify(res.result),
-                executionTimeMs: Date.now() - startTime,
+                executionTimeMs: nodeLatency,
                 providerUsed: providerObj.name
              };
              
-             tokensUsed += (res.tokens?.total || 10);
+             const tokens = (res.tokens?.total || 10);
+             tokensUsed += tokens;
              nodesExecuted++;
              success = true;
+             
+             nodeMetrics.push({
+                nodeId,
+                provider: providerObj.name,
+                latency: nodeLatency,
+                retries: fallbackAttempt,
+                fallback: fallbackAttempt > 0,
+                tokens,
+                status: 'success'
+             });
            } catch (err: any) {
              lastError = err;
              fallbackAttempt++;
@@ -157,6 +172,15 @@ export class SmartScheduler {
            error: err.message,
            executionTimeMs: Date.now() - startTime
         };
+        nodeMetrics.push({
+           nodeId,
+           provider: 'unknown',
+           latency: Date.now() - startTime,
+           retries: fallbackAttempt,
+           fallback: fallbackAttempt > 0,
+           tokens: 0,
+           status: 'failed'
+        });
         // Aqui o "Chaos Test" é mitigado: um nó falha, mas não estoura o worker inteiro,
         // ele apenas fica marcado como failed. Dependents dele podem falhar também.
       }
@@ -197,6 +221,12 @@ export class SmartScheduler {
     }
     
     await Promise.all(executionPromises);
+    
+    this.tracer?.finishScheduler({
+      nodesExecuted,
+      parallelGroups,
+      nodeMetrics
+    });
     
     return {
        executionId: this.context.executionId,

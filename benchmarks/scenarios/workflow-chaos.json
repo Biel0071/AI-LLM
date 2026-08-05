@@ -1,0 +1,14 @@
+﻿{
+  "name": "WORKFLOW-CHAOS",
+  "iterations": 10,
+  "concurrency": 2,
+  "payload": {
+    "model": "auto",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Force um timeout e depois force um erro 429 e ao mesmo tempo processe este nó normalmente"
+      }
+    ]
+  }
+}

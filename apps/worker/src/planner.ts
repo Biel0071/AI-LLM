@@ -1,18 +1,28 @@
-import { DagPlan, DagNode, ExecutionBudget } from '@api-platform/shared';
+import { DagPlan, DagNode, ExecutionBudget, IExecutionTracer } from '@repo/shared';
 import { validateDag } from './dag';
 
 export class HybridPlanner {
-  constructor(private readonly budget: ExecutionBudget) {}
+  constructor(private readonly budget: ExecutionBudget, private readonly tracer?: IExecutionTracer) {}
 
   async plan(prompt: string, context?: any): Promise<{ plan: DagPlan; plannerTimeMs: number }> {
+    this.tracer?.startPlanner();
     const startTime = Date.now();
+    let isHeuristic = true;
     let plan = this.heuristicPlan(prompt);
     
     if (!plan) {
+      isHeuristic = false;
       plan = await this.llmPlan(prompt);
     }
     
     validateDag(plan, this.budget);
+    
+    this.tracer?.finishPlanner({
+      strategy: isHeuristic ? 'heuristic' : 'llm',
+      nodesCreated: plan.nodes.length,
+      depth: 1, // Simplified
+      complexity: plan.nodes.length
+    });
     
     return {
       plan,
