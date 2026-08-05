@@ -16,7 +16,7 @@ export async function registerPromptTemplateRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.requireApiKey);
 
   fastify.get('/v1/prompt-templates', async (request, reply) => {
-    const { tenantId } = request;
+    const { tenantId } = request as any;
     const templates = await prisma.promptTemplate.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'desc' },
@@ -25,7 +25,7 @@ export async function registerPromptTemplateRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get('/v1/prompt-templates/:slug', async (request, reply) => {
-    const { tenantId } = request;
+    const { tenantId } = request as any;
     const { slug } = request.params as { slug: string };
     
     const template = await prisma.promptTemplate.findUnique({
@@ -40,7 +40,7 @@ export async function registerPromptTemplateRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/v1/prompt-templates', async (request, reply) => {
-    const { tenantId } = request;
+    const { tenantId } = request as any;
     const data = createTemplateSchema.parse(request.body);
 
     const template = await prisma.promptTemplate.create({
@@ -54,7 +54,7 @@ export async function registerPromptTemplateRoutes(fastify: FastifyInstance) {
   });
 
   fastify.put('/v1/prompt-templates/:slug', async (request, reply) => {
-    const { tenantId } = request;
+    const { tenantId } = request as any;
     const { slug } = request.params as { slug: string };
     const data = updateTemplateSchema.parse(request.body);
 
@@ -75,7 +75,7 @@ export async function registerPromptTemplateRoutes(fastify: FastifyInstance) {
   });
 
   fastify.delete('/v1/prompt-templates/:slug', async (request, reply) => {
-    const { tenantId } = request;
+    const { tenantId } = request as any;
     const { slug } = request.params as { slug: string };
 
     const existing = await prisma.promptTemplate.findUnique({ where: { slug } });
@@ -87,5 +87,6 @@ export async function registerPromptTemplateRoutes(fastify: FastifyInstance) {
     return { success: true };
   });
 }
+
 
 

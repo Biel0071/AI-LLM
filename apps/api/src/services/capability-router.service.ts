@@ -94,7 +94,7 @@ export class CapabilityRouterService {
       const res = await execute(
         'chat',
         { prompt: promptText, provider: match.providerId, model: match.model },
-        async (provider) => provider.generateText({ prompt: promptText, model: match.model }),
+        async (provider) => provider.generateText({ prompt: promptText, model: match.model }) as any,
         { tenantId: req.tenantId }
       );
       return {
@@ -111,5 +111,6 @@ export class CapabilityRouterService {
     }
   }
 }
+
 
 
