@@ -1,4 +1,4 @@
-import { execute, registry } from './ai.service';
+﻿import { execute, registry } from './ai.service';
 import { listProviderConfigs } from './provider-config.service';
 
 export interface CapabilityRequest {
@@ -111,4 +111,5 @@ export class CapabilityRouterService {
     }
   }
 }
+
 

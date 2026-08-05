@@ -1,4 +1,4 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
@@ -117,7 +117,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   await app.register(memoryRoutes);
   await app.register(registerPromptTemplateRoutes);
 
-  // ---------- Centro de Configuração e Sync de Cluster ----------
+  // ---------- Centro de ConfiguraÃ§Ã£o e Sync de Cluster ----------
   app.get('/config', { schema: { tags: ['v1'] } }, async () => {
     return { success: true, config: configCenter.getConfig() };
   });
@@ -525,7 +525,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  // ---------- Fênix / Orchestrator Queue API ----------
+  // ---------- FÃªnix / Orchestrator Queue API ----------
   app.post('/queue/enqueue', { config: rlText, schema: { tags: ['v1', 'queue'] } }, async (req, reply) => {
     const body = z.object({
       queue: z.enum(['text', 'vision', 'image', 'embedding', 'ocr', 'seo', 'translation', 'classification', 'webhook']),
@@ -612,3 +612,4 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     return registry.get('comfyui') as ComfyUIProvider;
   }
 }
+

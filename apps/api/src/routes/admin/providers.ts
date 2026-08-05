@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+﻿import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { fail } from '@api-platform/shared';
 import { execute, registry, reloadRegistry } from '../../services/ai.service';
@@ -63,3 +63,4 @@ export async function providersRoutes(secured: FastifyInstance): Promise<void> {
     return execute('chat', body, (provider) => provider.generateText(body), { cache: false });
   });
 }
+

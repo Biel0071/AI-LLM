@@ -1,4 +1,4 @@
-import {
+﻿import {
   AIProvider,
   deterministicTextQuality,
   Capability,
@@ -80,9 +80,9 @@ export async function execute<T>(
 ): Promise<StandardResponse<T>> {
   const clientModel = request.model;
   let effectiveRequest = request;
-  if (ctx.tenantId) {
+  if ((ctx.tenantId || "")) {
     const tenant = await prisma.tenant.findUnique({
-      where: { id: ctx.tenantId },
+      where: { id: (ctx.tenantId || "") },
       select: {
         active: true,
         defaultTextProvider: true,
@@ -100,7 +100,7 @@ export async function execute<T>(
     monthStart.setUTCHours(0, 0, 0, 0);
     if (tenant.monthlyRequestLimit || tenant.monthlyTokenLimit) {
       const aggregate = await prisma.requestLog.aggregate({
-        where: { tenantId: ctx.tenantId, createdAt: { gte: monthStart }, success: true },
+        where: { tenantId: (ctx.tenantId || ""), createdAt: { gte: monthStart }, success: true },
         _count: { _all: true },
         _sum: { totalTokens: true },
       });
@@ -126,7 +126,7 @@ export async function execute<T>(
   // Roteamento automatico de modelo: so preenche quando o chamador (ou o
   // default do tenant, acima) nao forcou um `model` explicito.
   const memoryChoice = !effectiveRequest.provider && !effectiveRequest.model
-    ? await recallExecutionRoute(capability, effectiveRequest, ctx.tenantId, ctx.projectId)
+    ? await recallExecutionRoute(capability, effectiveRequest, (ctx.tenantId || ""), ctx.projectId)
     : undefined;
   if (memoryChoice) {
     effectiveRequest = { ...effectiveRequest, provider: memoryChoice.provider, model: memoryChoice.model };
@@ -153,7 +153,7 @@ export async function execute<T>(
   
   for (const candidate of candidates) {
     try {
-      // calculateScore agora é async - usamos Promise para não bloquear
+      // calculateScore agora Ã© async - usamos Promise para nÃ£o bloquear
       void registry.calculateScore(candidate, capability).then(score => {
         metrics.providerScore.set({ provider: candidate.name, capability }, score);
       });
@@ -170,29 +170,29 @@ export async function execute<T>(
     request.model = candidateIndex === 0 ? effectiveRequest.model : clientModel;
     const requestedModel = request.model ?? 'provider-default';
     const modelKey = `${requestedModel}:${process.env.MODEL_CONFIG_VERSION ?? '1'}`;
-    const hash = cacheService.generateKey({ model: modelKey, tenant: ctx.tenantId, messages: (cacheInput as any).messages, prompt: (cacheInput as any).prompt });
+    const hash = cacheService.generateKey({ model: modelKey, tenant: (ctx.tenantId || ""), messages: (cacheInput as any).messages, prompt: (cacheInput as any).prompt });
     if (useCache) {
       const cacheResp = await cacheService.get(hash);
       const cached = cacheResp.data;
       if (cached) {
-        metrics.requests.inc({ capability, provider: cached?.provider, cached: 'true', status: 'ok' });
+        metrics.requests.inc({ capability, provider: (cached as any)?.provider, cached: 'true', status: 'ok' });
         usageService.record({
-          tenantId: ctx.tenantId,
+          tenantId: (ctx.tenantId || ""),
           capability,
-          provider: cached?.provider,
-          model: cached.model,
+          provider: (cached as any)?.provider,
+          model: (cached as any).model,
           cached: true,
           success: true,
           durationMs: 0,
-          tokens: cached.tokens,
+          tokens: (cached as any).tokens,
         });
         return enforceSynchronousQuality(ok({
-          provider: cached?.provider,
-          model: cached.model,
+          provider: (cached as any)?.provider,
+          model: (cached as any).model,
           executionTime: 0,
-          tokens: cached.tokens,
+          tokens: (cached as any).tokens,
           cached: true,
-          result: cached.result as T,
+          result: (cached as any).result as T,
         }), capability, effectiveRequest);
       }
     }
@@ -210,7 +210,7 @@ export async function execute<T>(
           const res = await sharedCall;
           metrics.requests.inc({ capability, provider: provider.name, cached: 'true', status: 'ok' });
           usageService.record({
-            tenantId: ctx.tenantId, capability, provider: provider.name, model: res.model,
+            tenantId: (ctx.tenantId || ""), capability, provider: provider.name, model: res.model,
             cached: true, success: true, durationMs: 0, tokens: res.tokens,
           });
           return enforceSynchronousQuality(ok({
@@ -244,7 +244,7 @@ export async function execute<T>(
       metrics.duration.observe({ capability, provider: provider.name }, durationMs / 1000);
       if (res.tokens?.total) metrics.tokens.inc({ provider: provider.name }, res.tokens.total);
       usageService.record({
-        tenantId: ctx.tenantId,
+        tenantId: (ctx.tenantId || ""),
         capability,
         provider: provider.name,
         model: res.model,
@@ -256,7 +256,7 @@ export async function execute<T>(
       Object.assign(response, { memory: { learned: true, routeReused: Boolean(memoryChoice), ...(memoryChoice ?? {}) } });
       void rememberExecutionSuccess(
         capability, effectiveRequest, { provider: provider.name, model: res.model },
-        response.quality?.score ?? 100, durationMs, ctx.tenantId, ctx.projectId,
+        response.quality?.score ?? 100, durationMs, (ctx.tenantId || ""), ctx.projectId,
       );
 
       if (useCache) {
@@ -272,7 +272,7 @@ export async function execute<T>(
       const durationMs = Date.now() - start;
       metrics.requests.inc({ capability, provider: provider.name, cached: 'false', status: 'error' });
       usageService.record({
-        tenantId: ctx.tenantId,
+        tenantId: (ctx.tenantId || ""),
         capability,
         provider: provider.name,
         model: requestedModel,
@@ -292,4 +292,5 @@ export async function execute<T>(
 
   throw lastError ?? new Error(`No provider available for ${capability}`);
 }
+
 
