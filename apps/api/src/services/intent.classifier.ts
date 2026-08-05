@@ -1,4 +1,4 @@
-import { ExecutionMode, IntentResult } from '@repo/shared';
+import { ExecutionMode, IntentResult } from '@api-platform/shared';
 import { estimatePayloadTokens } from '@api-platform/shared';
 
 export class FastIntentClassifier {

@@ -118,7 +118,7 @@ async function runWithFallback<T>(
     const circuitKey = `${provider.name}:${capability}`;
     try {
       const routedModel = pickModel(capability, task, provider.name, process.env);
-      const result = await run(provider, () => fn(provider, routedModel));
+      const result = await run<T>(provider, () => fn(provider, routedModel));
       providerCircuit.recordSuccess(circuitKey);
       return result;
     } catch (err) {

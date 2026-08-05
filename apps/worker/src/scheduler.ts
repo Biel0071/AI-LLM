@@ -42,7 +42,7 @@ export class SmartScheduler {
     private readonly context: ExecutionContext,
     private readonly registry: any,
     private readonly renderer: PromptRenderer,
-    private readonly tracer?: import('@repo/shared').IExecutionTracer
+    private readonly tracer?: import('@api-platform/shared').IExecutionTracer
   ) {}
 
   async executePlan(): Promise<ExecutionTrace> {
@@ -60,7 +60,7 @@ export class SmartScheduler {
     let fallbacks = 0;
     let tokensUsed = 0;
     let parallelGroups = 0;
-    const nodeMetrics: import('@repo/shared').NodeMetric[] = [];
+    const nodeMetrics: import('@api-platform/shared').NodeMetric[] = [];
     
     const inDegree = new Map<string, number>();
     const dependents = new Map<string, string[]>();

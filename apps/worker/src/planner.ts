@@ -1,4 +1,4 @@
-import { DagPlan, DagNode, ExecutionBudget, IExecutionTracer } from '@repo/shared';
+import { DagPlan, DagNode, ExecutionBudget, IExecutionTracer } from '@api-platform/shared';
 import { validateDag } from './dag';
 
 export class HybridPlanner {

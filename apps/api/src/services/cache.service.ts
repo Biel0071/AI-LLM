@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { redis } from '../lib/redis';
-import { ProviderResult } from '@repo/shared';
+import { ProviderResult } from '@api-platform/shared';
 
 class SimpleLRU<K, V> {
   private cache = new Map<K, { value: V; expiresAt: number }>();

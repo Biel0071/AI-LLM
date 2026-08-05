@@ -7,7 +7,7 @@ import {
   Capability,
   ProviderError,
   MemoryExecutionTracer
-} from '@repo/shared';
+} from '@api-platform/shared';
 import { cacheService } from './cache.service';
 import { ComplexityAnalyzer } from './complexity.analyzer';
 import { FastIntentClassifier } from './intent.classifier';

@@ -1,4 +1,4 @@
-import { DispatchDecision, ExecutionContext, ExecutionMode, ExecutionTransport } from '@repo/shared';
+import { DispatchDecision, ExecutionContext, ExecutionMode, ExecutionTransport } from '@api-platform/shared';
 
 export class ExecutionDispatcher {
   /**

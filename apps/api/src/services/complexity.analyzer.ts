@@ -1,4 +1,4 @@
-import { ComplexityResult } from '@repo/shared';
+import { ComplexityResult } from '@api-platform/shared';
 import { estimatePayloadTokens } from '@api-platform/shared';
 
 export class ComplexityAnalyzer {

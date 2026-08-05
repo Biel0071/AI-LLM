@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { ExecutionGateway } from '../../services/execution-gateway.service';
-import { ProviderStream } from '@repo/shared';
+import { ProviderStream } from '@api-platform/shared';
 
 export async function registerOpenAICompatRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.requireApiKey);
