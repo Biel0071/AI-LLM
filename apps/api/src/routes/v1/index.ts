@@ -173,7 +173,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
       });
     }
     try {
-      return await execute('chat', body, (p) => p.generateText(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+      return await execute('chat', body, (p) => p.generateText(body) as any, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     } finally {
       release();
     }
@@ -182,7 +182,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   // ---------- Chat ----------
   app.post('/chat', { config: rlText, schema: { tags: ['v1'] } }, async (req) => {
     const body = chatSchema.parse(req.body);
-    return execute('chat', body, (p) => p.chat(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    return execute('chat', body, (p) => p.chat(body) as any, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
   });
 
   // ---------- Imagem ----------
@@ -194,7 +194,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
         success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
     }
-    const response = await execute('image', body, (p) => p.generateImage(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    const response = await execute('image', body, (p) => p.generateImage(body) as any, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, prompt: body.prompt, kind: body.image ? 'image-to-image' : 'text-to-image', seed: body.seed });
   });
 
@@ -290,25 +290,25 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
         success: true, ...queued, status: 'waiting', ...queueEntryPopulation(queued.queue),
       });
     }
-    const response = await execute('image', body, (p) => (p as any).upscale(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    const response = await execute('image', body, (p) => (p as any).upscale(body) as any, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
     return persistImageResponse(response, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId, kind: 'upscale' });
   });
 
   // ---------- Vision ----------
   app.post('/vision', { config: rlVision, schema: { tags: ['v1'] } }, async (req) => {
     const body = visionSchema.parse(req.body);
-    return execute('vision', body, (p) => p.vision(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    return execute('vision', body, (p) => p.vision(body) as any, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
   });
 
   // ---------- Embeddings ----------
   app.post('/embed', { config: rlEmbed, schema: { tags: ['v1'] } }, async (req) => {
     const body = embedSchema.parse(req.body);
-    return execute('embedding', body, (p) => p.embed(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    return execute('embedding', body, (p) => p.embed(body) as any, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
   });
 
   app.post('/embedding', { config: rlEmbed, schema: { tags: ['v1'] } }, async (req) => {
     const body = embedSchema.parse(req.body);
-    return execute('embedding', body, (p) => p.embed(body), { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    return execute('embedding', body, (p) => p.embed(body) as any, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
   });
   // ---------- OCR ----------
   app.post('/ocr', { config: rlText, schema: { tags: ['v1'] } }, async (req, reply) => {
@@ -612,4 +612,5 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     return registry.get('comfyui') as ComfyUIProvider;
   }
 }
+
 
