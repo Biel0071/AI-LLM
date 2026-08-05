@@ -10,6 +10,7 @@ import {
 import { cacheService } from './cache.service';
 import { ComplexityAnalyzer } from './complexity.analyzer';
 import { FastIntentClassifier } from './intent.classifier';
+import { ExecutionDispatcher } from './dispatcher.service';
 import { ProviderRegistry } from '@repo/shared/src/providers/registry';
 import { enqueueAndWait } from './queue.service';
 import crypto from 'crypto';
@@ -147,23 +148,20 @@ export class ExecutionGateway {
     const intent = FastIntentClassifier.classify(messages, { tools: payload.tools });
     let mode = intent.mode;
     
-    // 3. ExecutionDecision & Complexity (only if WORKFLOW)
-    let transport = ExecutionTransport.DIRECT;
-    
+    // 3. Complexity (only if WORKFLOW)
     if (mode === ExecutionMode.WORKFLOW) {
       ctx.complexity = ComplexityAnalyzer.analyze(messages, model, { stream, tools: payload.tools });
-      transport = ExecutionTransport.QUEUE; // For workflow, push to worker (which runs planner)
     }
     
-    // Se o usuário pediu stream e é WORKFLOW, no momento BullMQ n suporta SSE direto pra nós (a não ser que implementado Redis PubSub).
-    // Mas vamos manter a decisão ortogonal.
-    if (stream && transport === ExecutionTransport.QUEUE) {
-      // By default, queue executor doesn't stream. For now we will allow it to fail or fallback.
-    }
+    ctx.decision = { mode, transport: ExecutionTransport.DIRECT, stream, reason: `Confidence: ${intent.confidence}` };
     
-    ctx.decision = { mode, transport, stream, reason: `Confidence: ${intent.confidence}` };
+    // 4. Dispatch Policy
+    ctx.dispatch = ExecutionDispatcher.dispatch(payload, ctx);
     
-    // 4. Execution
+    // Update transport based on dispatch policy
+    ctx.decision.transport = ctx.dispatch.transport;
+    
+    // 5. Execution
     const executor = ExecutorFactory.getExecutor(ctx.decision.transport);
     const rawResponse = await executor.execute(ctx, payload);
     

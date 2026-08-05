@@ -1,0 +1,23 @@
+{
+  "name": "WORKFLOW",
+  "iterations": 50,
+  "concurrency": 10,
+  "payload": {
+    "model": "auto",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Analise o mercado de tecnologia, traduza para espanhol e resuma as principais tendencias em 3 tópicos curtos."
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "search_trends",
+          "description": "Busca tendências no google"
+        }
+      }
+    ]
+  }
+}

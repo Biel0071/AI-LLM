@@ -8,6 +8,9 @@
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
+    "benchmark": "tsx ../../benchmarks/benchmark.ts",
+    "benchmark:report": "tsx ../../benchmarks/report.ts",
+    "benchmark:compare": "tsx ../../benchmarks/compare.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev"

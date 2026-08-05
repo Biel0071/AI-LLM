@@ -1,0 +1,14 @@
+{
+  "name": "STANDARD",
+  "iterations": 200,
+  "concurrency": 20,
+  "payload": {
+    "model": "auto",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Explique Docker"
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "FAST",
+  "iterations": 1000,
+  "concurrency": 50,
+  "payload": {
+    "model": "auto",
+    "messages": [
+      {
+        "role": "user",
+        "content": "oi"
+      }
+    ]
+  }
+}

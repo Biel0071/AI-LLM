@@ -1,0 +1,15 @@
+{
+  "name": "STREAM",
+  "iterations": 50,
+  "concurrency": 50,
+  "payload": {
+    "model": "auto",
+    "stream": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Gere um poema longo sobre inteligência artificial"
+      }
+    ]
+  }
+}

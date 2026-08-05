@@ -169,6 +169,14 @@ export enum ExecutionTransport {
   QUEUE = 'QUEUE'
 }
 
+export interface DispatchDecision {
+  transport: ExecutionTransport;
+  priority: number;
+  timeoutMs: number;
+  retryPolicy: string;
+  rateLimitPolicy: string;
+}
+
 export interface ExecutionDecision {
   mode: ExecutionMode;
   transport: ExecutionTransport;
@@ -184,6 +192,7 @@ export interface ExecutionContext {
   complexity?: ComplexityResult;
   cacheHit?: 'L1' | 'L2' | 'MISS';
   decision?: ExecutionDecision;
+  dispatch?: DispatchDecision;
   metrics?: any;
   plannerUsed?: boolean;
   queueUsed?: boolean;
