@@ -12,6 +12,7 @@ import {
   ModelInfo,
   ProviderError,
   ProviderResult,
+  ProviderResponse,
   UpscaleInput,
   VisionInput,
 } from '../types';
@@ -66,6 +67,71 @@ export abstract class BaseProvider implements AIProvider {
     }
   }
 
+  protected async *streamHttp(url: string, opts: HttpOptions = {}): AsyncGenerator<any, void, unknown> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? this.defaultTimeoutMs);
+    try {
+      const res = await fetch(url, {
+        method: opts.method ?? 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(opts.headers ?? {}),
+        },
+        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new ProviderError(
+          this.name,
+          `HTTP ${res.status} ${res.statusText}: ${text.slice(0, 500)}`,
+          'UPSTREAM_HTTP_ERROR',
+          res.status >= 500 ? 502 : res.status,
+        );
+      }
+
+      if (!res.body) {
+        throw new ProviderError(this.name, 'No response body for stream', 'UPSTREAM_HTTP_ERROR', 502);
+      }
+
+      // Using readable Web Streams API
+      const reader = (res.body as unknown as ReadableStream<Uint8Array>).getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(':')) continue;
+          if (trimmed === 'data: [DONE]') return;
+          
+          if (trimmed.startsWith('data: ')) {
+            const dataStr = trimmed.slice(6);
+            try {
+              yield JSON.parse(dataStr);
+            } catch (e) {
+              // Ignore parse errors on partial chunks
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (err instanceof ProviderError) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new ProviderError(this.name, msg, 'UPSTREAM_UNREACHABLE', 502);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   protected async httpBinary(url: string, opts: HttpOptions = {}): Promise<Buffer> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? this.defaultTimeoutMs);
@@ -89,13 +155,36 @@ export abstract class BaseProvider implements AIProvider {
     throw new CapabilityNotSupportedError(this.name, capability);
   }
 
-  async generateText(_input: GenerateTextInput): Promise<ProviderResult<{ text: string }>> {
+  async generateText(_input: GenerateTextInput): Promise<ProviderResponse<{ text: string }>> {
     // Keep generateText for internal use, even though 'text' isn't a capability anymore
     // (chat takes its place).
     throw new ProviderError(this.name, 'text generation is not supported natively, use chat', 'NOT_SUPPORTED', 400, false);
   }
-  async chat(_input: ChatInput): Promise<ProviderResult<{ message: ChatMessage }>> {
+  async chat(_input: ChatInput): Promise<ProviderResponse<{ message: ChatMessage }>> {
     this.notSupported('chat');
+  }
+
+  /**
+   * Helper to collect an AsyncIterable of ProviderChunk into a single ProviderResult.
+   */
+  protected async collectChunks(
+    stream: AsyncIterable<import('../types').ProviderChunk>,
+    model: string
+  ): Promise<import('../types').ProviderResult<{ message: ChatMessage }>> {
+    let text = '';
+    let usage: import('../types').TokenUsage | undefined;
+    for await (const chunk of stream) {
+      if (chunk.type === 'delta' && chunk.text) {
+        text += chunk.text;
+      } else if (chunk.type === 'usage') {
+        usage = { prompt: chunk.promptTokens, completion: chunk.completionTokens, total: chunk.totalTokens };
+      }
+    }
+    return {
+      result: { message: { role: 'assistant', content: text } },
+      model,
+      tokens: usage
+    };
   }
   async generateImage(_input: GenerateImageInput): Promise<ProviderResult<{ images: GeneratedImage[] }>> {
     this.notSupported('image');

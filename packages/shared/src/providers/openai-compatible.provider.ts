@@ -61,7 +61,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
     };
   }
 
-  override async generateText(input: GenerateTextInput): Promise<ProviderResult<{ text: string }>> {
+  override async generateText(input: GenerateTextInput): Promise<import('../types').ProviderResponse<{ text: string }>> {
     const messages: ChatMessage[] = [];
     if (input.system) messages.push({ role: 'system', content: input.system });
     messages.push({ role: 'user', content: input.prompt });
@@ -71,10 +71,20 @@ export class OpenAICompatibleProvider extends BaseProvider {
       temperature: input.temperature,
       maxTokens: input.maxTokens,
     });
-    return { result: { text: res.result.message.content }, model: res.model, tokens: res.tokens, raw: res.raw };
+    
+    if ('stream' in res) {
+      return res as import('../types').ProviderStream;
+    }
+    
+    return { 
+      result: { text: res.result.message.content }, 
+      model: res.model, 
+      tokens: res.tokens, 
+      raw: res.raw 
+    };
   }
 
-  override async chat(input: ChatInput): Promise<ProviderResult<{ message: ChatMessage }>> {
+  override async chat(input: ChatInput): Promise<import('../types').ProviderResponse<{ message: ChatMessage }>> {
     const model = input.model ?? this.config.defaultModel;
     if (!model) throw new ProviderError(this.name, 'no model configured', 'MODEL_REQUIRED', 400);
 
@@ -97,31 +107,90 @@ export class OpenAICompatibleProvider extends BaseProvider {
     if (input.temperature !== undefined) body.temperature = input.temperature;
     if (input.maxTokens !== undefined) body.max_tokens = input.maxTokens;
     if (input.stream) body.stream = true;
+    if (input.stream) {
+      body.stream = true;
+      const generator = this.streamHttp(this.url('/chat/completions'), {
+        method: 'POST',
+        headers: this.headers,
+        body,
+      });
 
-    const data = await this.http<any>(this.url('/chat/completions'), {
-      method: 'POST',
-      headers: this.headers,
-      body,
-    });
+      const provider = this.name;
+      async function* processChunks(): AsyncGenerator<import('../types').ProviderChunk, void, unknown> {
+        for await (const chunk of generator) {
+          const text = chunk?.choices?.[0]?.delta?.content ?? '';
+          const finishReason = chunk?.choices?.[0]?.finish_reason;
+          const usage = chunk?.usage;
+          
+          if (text) {
+            yield { type: 'delta', text, finishReason };
+          } else if (finishReason) {
+            yield { type: 'delta', text: '', finishReason };
+          }
+          
+          if (usage) {
+             yield { 
+               type: 'usage', 
+               promptTokens: usage.prompt_tokens, 
+               completionTokens: usage.completion_tokens, 
+               totalTokens: usage.total_tokens 
+             };
+          }
+        }
+        
+        yield { type: 'done' };
+      }
 
-    // O parsing no modo atual não prevê proxy reativo de chunks para clients não configurados.
-    const content: string = data?.choices?.[0]?.message?.content ?? '';
-    return {
-      result: { message: { role: 'assistant', content } },
-      model: data?.model ?? model,
-      tokens: this.mapUsage(data?.usage),
-      raw: data,
-    };
+      return {
+        stream: true,
+        model,
+        chunks: processChunks(),
+      };
+    } else {
+      const data = await this.http<any>(this.url('/chat/completions'), {
+        method: 'POST',
+        headers: this.headers,
+        body,
+      });
+
+      const content: string = data?.choices?.[0]?.message?.content ?? '';
+      
+      const chunks: AsyncIterable<import('../types').ProviderChunk> = {
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'delta', text: content, finishReason: 'stop' };
+          if (data?.usage) {
+            yield { type: 'usage', promptTokens: data.usage.prompt_tokens, completionTokens: data.usage.completion_tokens, totalTokens: data.usage.total_tokens };
+          }
+          yield { type: 'done' };
+        }
+      };
+      
+      return {
+        stream: true,
+        model: data?.model ?? model,
+        chunks
+      };
+    }
   }
 
-  override async vision(input: VisionInput): Promise<ProviderResult<{ text: string }>> {
+  override async vision(input: VisionInput): Promise<import('../types').ProviderResponse<{ text: string }>> {
     const res = await this.chat({
       messages: [{ role: 'user', content: input.prompt, images: input.images }],
       model: input.model,
       maxTokens: input.maxTokens,
       stream: input.stream,
     });
-    return { result: { text: res.result.message.content }, model: res.model, tokens: res.tokens, raw: res.raw };
+    
+    if ('stream' in res) {
+      return res as import('../types').ProviderStream;
+    }
+    
+    return { 
+      result: { text: res.result.message.content }, 
+      model: res.model, 
+      tokens: res.tokens, 
+      raw: res.raw 
+    };
   }
 
   override async embed(input: EmbedInput): Promise<ProviderResult<{ embeddings: number[][] }>> {

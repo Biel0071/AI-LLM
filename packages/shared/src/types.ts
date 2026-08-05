@@ -122,6 +122,74 @@ export interface ProviderResult<T> {
   raw?: unknown;
 }
 
+export type ProviderChunk =
+  | { type: 'status'; message: string }
+  | { type: 'delta'; text: string; finishReason?: string }
+  | { type: 'usage'; promptTokens: number; completionTokens: number; totalTokens: number }
+  | { type: 'trace'; traceId: string }
+  | { type: 'error'; message: string; code?: string }
+  | { type: 'done' };
+
+export interface ProviderStream {
+  stream: true;
+  model: string;
+  chunks: AsyncIterable<ProviderChunk>;
+}
+
+export type ProviderResponse<T> = ProviderResult<T> | ProviderStream;
+
+export interface ComplexityResult {
+  estimatedTokens: number;
+  estimatedLatency: number;
+  estimatedCost: number;
+  suggestedProvider: string;
+  plannerThreshold: number;
+  executionBudget: number;
+  requiresPlanner: boolean;
+  requiresTools: boolean;
+  requiresVision: boolean;
+  requiresFiles: boolean;
+  requiresImages: boolean;
+  requiresStreaming: boolean;
+}
+
+export interface IntentResult {
+  mode: ExecutionMode;
+  confidence: number;
+}
+
+export enum ExecutionMode {
+  FAST = 'FAST',
+  STANDARD = 'STANDARD',
+  WORKFLOW = 'WORKFLOW'
+}
+
+export enum ExecutionTransport {
+  DIRECT = 'DIRECT',
+  QUEUE = 'QUEUE'
+}
+
+export interface ExecutionDecision {
+  mode: ExecutionMode;
+  transport: ExecutionTransport;
+  stream: boolean;
+  reason: string;
+}
+
+export interface ExecutionContext {
+  executionId: string;
+  traceId: string;
+  tenant: string;
+  budget?: any; // To avoid circular dependency initially if ExecutionBudget isn't here
+  complexity?: ComplexityResult;
+  cacheHit?: 'L1' | 'L2' | 'MISS';
+  decision?: ExecutionDecision;
+  metrics?: any;
+  plannerUsed?: boolean;
+  queueUsed?: boolean;
+  metadata: Record<string, any>;
+}
+
 export interface ModelInfo {
   id: string;
   name?: string;
@@ -153,11 +221,11 @@ export interface HealthStatus {
 export interface AIProvider {
   readonly name: string;
   readonly capabilities: Capability[];
-  generateText(input: GenerateTextInput): Promise<ProviderResult<{ text: string }>>;
-  chat(input: ChatInput): Promise<ProviderResult<{ message: ChatMessage }>>;
+  generateText(input: GenerateTextInput): Promise<ProviderResponse<{ text: string }>>;
+  chat(input: ChatInput): Promise<ProviderResponse<{ message: ChatMessage }>>;
   generateImage(input: GenerateImageInput): Promise<ProviderResult<{ images: GeneratedImage[] }>>;
   embed(input: EmbedInput): Promise<ProviderResult<{ embeddings: number[][] }>>;
-  vision(input: VisionInput): Promise<ProviderResult<{ text: string }>>;
+  vision(input: VisionInput): Promise<ProviderResponse<{ text: string }>>;
   audio(input: AudioInput): Promise<ProviderResult<{ text?: string; audio?: string; language?: string; confidence?: number; metadata?: unknown }>>;
   mission?(input: MissionInput): Promise<ProviderResult<unknown>>;
   health(): Promise<HealthStatus>;
