@@ -88,6 +88,10 @@ export class SmartScheduler {
     const executeNode = async (nodeId: string) => {
       const node = nodeMap.get(nodeId)!;
       const startTime = Date.now();
+      let fallbackAttempt = 0;
+      let lastError: any = null;
+      let success = false;
+      const maxRetries = 2;
       
       try {
         const contextData: any = {};
@@ -101,10 +105,6 @@ export class SmartScheduler {
         
         // Resolve capabilities through ProviderRegistry logic
         // We do fallback loop natively inside the node execution (Chaos handling)
-        let fallbackAttempt = 0;
-        let lastError: any = null;
-        let success = false;
-        const maxRetries = 2;
         
         // Obter providers que suportam a capability
         const candidates = this.registry.resolveCandidates(node.capability || 'chat');
@@ -236,7 +236,7 @@ export class SmartScheduler {
        nodesFailed,
        retries,
        fallbacks,
-       latencyMs: Date.now() - this.context.startTime,
+       latencyMs: Date.now() - (this.context?.startTime || Date.now()),
        tokensUsed,
        cost: 0,
        parallelGroups
