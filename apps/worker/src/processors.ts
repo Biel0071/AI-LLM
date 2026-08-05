@@ -108,7 +108,7 @@ async function runWithFallback<T>(
   registry: ProviderRegistry,
   capability: Capability,
   requested: string | undefined,
-  fn: (provider: AIProvider, routedModel: string | undefined) => Promise<{ result: T; model: string; tokens?: { prompt?: number; completion?: number; total?: number } }>,
+  fn: (provider: AIProvider, routedModel: string | undefined) => Promise<import('@api-platform/shared').ProviderResult<T>>,
   task?: TaskHint,
 ): Promise<StandardResponse<T>> {
   let lastError: unknown;
@@ -382,9 +382,11 @@ export const translationProcessor: ProcessorFn = async (job, registry) => {
     (data.sourceLanguage ? ` (idioma de origem: ${data.sourceLanguage})` : '') +
     '. Responda APENAS com a traducao, sem explicacoes.\n\n' +
     data.text;
-  return runWithFallback(registry, 'chat', data.provider, (provider, routedModel) =>
-    provider.generateText({ prompt, model: data.model ?? routedModel }), 'translation',
-  );
+  return runWithFallback(registry, 'chat', data.provider, async (provider, routedModel) => {
+    const res = await provider.generateText({ prompt, model: data.model ?? routedModel });
+    if ('stream' in res) throw new Error('Streaming not supported');
+    return res as import('@api-platform/shared').ProviderResult<{ text: string }>;
+  }, 'translation');
 };
 
 // ---------- Worker Classificacao ----------
@@ -396,9 +398,11 @@ export const classificationProcessor: ProcessorFn = async (job, registry) => {
     `Categorias permitidas (copie uma delas sem alterar): ${data.categories.map((category) => `[${category}]`).join(', ')}.\n` +
     'Não use sinônimos, explicações, pontuação ou categorias diferentes. Responda APENAS com o texto exato dentro de um dos colchetes.\n\n' +
     data.text;
-  const res = await runWithFallback(registry, 'chat', data.provider, (provider, routedModel) =>
-    provider.generateText({ prompt, model: data.model ?? routedModel }), task,
-  );
+  const res = await runWithFallback(registry, 'chat', data.provider, async (provider, routedModel) => {
+    const r = await provider.generateText({ prompt, model: data.model ?? routedModel });
+    if ('stream' in r) throw new Error('Streaming not supported');
+    return r as import('@api-platform/shared').ProviderResult<{ text: string }>;
+  }, task);
   const raw = (res.result as { text: string }).text.trim();
   const category = resolveAllowedCategory(raw, data.categories);
   return { ...res, result: { category, raw } };
@@ -493,8 +497,11 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
   console.log(`[${executionId}] Start Planning for prompt: "${userText.slice(0, 30)}..."`);
   const { plan, plannerTimeMs } = await planner.plan(userText);
   
-  const ctx: ExecutionContext = {
-    executionId,
+  const context: ExecutionContext = {
+    executionId: job.id!,
+    traceId: job.id!,
+    tenant: 'default',
+    metadata: {},
     budget,
     plan,
     results: {},
@@ -503,7 +510,7 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
 
   // 2. Schedule and execute DAG
   const renderer = new PromptRenderer();
-  const scheduler = new SmartScheduler(ctx, registry, renderer);
+  const scheduler = new SmartScheduler(context, registry, renderer);
   
   console.log(`[${executionId}] Start DAG Execution. Nodes: ${plan.nodes.length}`);
   const trace: ExecutionTrace = await scheduler.executePlan();
@@ -514,8 +521,11 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
   
   // 3. Assemble final response
   // If the composer node exists, get its result. Otherwise get the last node.
-  const nodeResults = Object.values(ctx.results);
-  const composerNode = nodeResults.find(r => r.nodeId === 'node_composer');
+  const resultsArr = Object.values(context.results || {});
+  const successNodes = resultsArr.filter(r => r.status === 'success').length;
+  const failNodes = resultsArr.filter(r => r.status === 'failed').length;
+  
+  const composerNode = resultsArr.find(r => r.nodeId === 'node_composer');
   
   let finalResult = '';
   let finalStatus = 'failed';
@@ -523,9 +533,9 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
   if (composerNode && composerNode.status === 'success') {
     finalResult = composerNode.result;
     finalStatus = 'success';
-  } else if (nodeResults.length > 0) {
+  } else if (resultsArr.length > 0) {
     // Pegar o resultado do ultimo nó que teve sucesso
-    const lastSuccess = [...nodeResults].reverse().find(r => r.status === 'success');
+    const lastSuccess = [...resultsArr].reverse().find(r => r.status === 'success');
     if (lastSuccess) {
       finalResult = lastSuccess.result;
       finalStatus = 'success';

@@ -45,7 +45,7 @@ export class SmartScheduler {
   ) {}
 
   async executePlan(): Promise<ExecutionTrace> {
-    const { plan, budget, results } = this.context;
+    const { plan, budget, results, startTime: globalStartTime } = this.context as Required<import('@api-platform/shared').ExecutionContext>;
     if (!plan) throw new Error('No plan provided');
 
     const limit = pLimit(budget.maxParallelNodes || 2);
@@ -113,7 +113,7 @@ export class SmartScheduler {
         while (fallbackAttempt <= maxRetries && !success) {
            const providerObj = candidates[fallbackAttempt % candidates.length];
            try {
-             if (Date.now() - this.context.startTime > budget.maxExecutionTimeMs) {
+             if (Date.now() - (globalStartTime || Date.now()) > budget.maxExecutionTimeMs) {
                 throw new Error('Execution budget timeout exceeded');
              }
              
