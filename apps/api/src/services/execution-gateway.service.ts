@@ -13,6 +13,7 @@ import { ComplexityAnalyzer } from './complexity.analyzer';
 import { FastIntentClassifier } from './intent.classifier';
 import { ExecutionDispatcher } from './dispatcher.service';
 import { ProviderRegistry } from '@api-platform/shared';
+import { registry } from './ai.service';
 import { enqueueAndWait } from './queue.service';
 import crypto from 'crypto';
 
@@ -25,10 +26,7 @@ export class DirectExecutor implements Executor {
     let capability: Capability = 'chat';
     if (ctx.complexity?.requiresVision) capability = 'vision';
     
-    const provider = ProviderRegistry.getProvider({
-      capability,
-      stream: ctx.decision?.stream,
-    });
+    const provider = await registry.resolve(capability);
     
     if (!provider) {
       throw new ProviderError('System', 'No provider available for the required capability', 'NO_PROVIDER', 503);
@@ -208,5 +206,6 @@ export class ExecutionGateway {
     return { ctx, response };
   }
 }
+
 
 
