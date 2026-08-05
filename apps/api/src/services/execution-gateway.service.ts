@@ -1,4 +1,4 @@
-import { 
+﻿import { 
   ExecutionContext, 
   ExecutionDecision, 
   ExecutionMode, 
@@ -43,10 +43,10 @@ export class DirectExecutor implements Executor {
         res = await provider.chat(input);
       }
       
-      ctx.metrics = { ...ctx.metrics, // latency: Date.now() - start };
+      ctx.metrics = { ...ctx.metrics, } as any;
       return res;
     } catch (error) {
-      ctx.metrics = { ...ctx.metrics, // latency: Date.now() - start };
+      ctx.metrics = { ...ctx.metrics, } as any;
       throw error;
     }
   }
@@ -75,13 +75,13 @@ export class QueueExecutor implements Executor {
         ctx.trace = [...(ctx.trace || []), ...rawResult.result.tracerEvents];
       }
       
-      ctx.metrics = { ...ctx.metrics, // latency: Date.now() - start };
+      ctx.metrics = { ...ctx.metrics, } as any;
       ctx.queueUsed = true;
       ctx.plannerUsed = true; // For WORKFLOW/Queue we assume planner was used in worker
       
       return result as ProviderResponse<any>;
     } catch (error) {
-      ctx.metrics = { ...ctx.metrics, // latency: Date.now() - start };
+      ctx.metrics = { ...ctx.metrics, } as any;
       throw error;
     }
   }
@@ -208,4 +208,5 @@ export class ExecutionGateway {
     return { ctx, response };
   }
 }
+
 
