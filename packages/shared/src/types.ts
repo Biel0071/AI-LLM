@@ -188,7 +188,7 @@ export interface ExecutionContext {
   executionId: string;
   traceId: string;
   tenant: string;
-  budget?: any; // To avoid circular dependency initially if ExecutionBudget isn't here
+  budget?: ExecutionBudget;
   complexity?: ComplexityResult;
   cacheHit?: 'L1' | 'L2' | 'MISS';
   decision?: ExecutionDecision;
@@ -197,6 +197,9 @@ export interface ExecutionContext {
   plannerUsed?: boolean;
   queueUsed?: boolean;
   metadata: Record<string, any>;
+  plan?: DagPlan;
+  results?: ResultStore;
+  startTime?: number;
 }
 
 export interface ModelInfo {
@@ -327,13 +330,6 @@ export interface ResultStore {
   [nodeId: string]: NodeExecutionResult;
 }
 
-export interface ExecutionContext {
-  executionId: string;
-  budget: ExecutionBudget;
-  plan?: DagPlan;
-  results: ResultStore;
-  startTime: number;
-}
 
 export interface ExecutionTrace {
   executionId: string;

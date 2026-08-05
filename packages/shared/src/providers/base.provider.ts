@@ -192,7 +192,7 @@ export abstract class BaseProvider implements AIProvider {
   async embed(_input: EmbedInput): Promise<ProviderResult<{ embeddings: number[][] }>> {
     this.notSupported('embedding');
   }
-  async vision(_input: VisionInput): Promise<ProviderResult<{ text: string }>> {
+  async vision(_input: VisionInput): Promise<ProviderResponse<{ text: string }>> {
     this.notSupported('vision');
   }
   async audio(_input: any): Promise<ProviderResult<{ text?: string; audio?: string; language?: string; confidence?: number; metadata?: unknown }>> {

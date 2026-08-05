@@ -75,7 +75,7 @@ class Planner {
     const provider = await this.registry.resolve('chat', mission.model ? undefined : 'auto'); // Auto-resolve LLM
     const prompt = `Crie um plano passo a passo para atingir este objetivo: ${mission.objective}`;
     const res = await provider.generateText({ prompt, model: mission.model });
-    
+    if ('stream' in res) throw new Error('Stream not supported in planner');
     const text = typeof res.result === 'string' ? res.result : (res.result as any)?.text ?? '';
     return text.split('\n').filter((l: string) => l.trim().length > 0);
   }
