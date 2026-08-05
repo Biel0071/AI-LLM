@@ -1,3 +1,5 @@
+import { promisify } from 'node:util';
+import type { Job } from 'bullmq';
 import { execFile } from 'node:child_process';
 import { createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
@@ -5,12 +7,10 @@ import { isIP } from 'node:net';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import type { Job } from 'bullmq';
 import { HybridPlanner } from './planner';
 import { SmartScheduler } from './scheduler';
 import { PromptRenderer } from './prompt-renderer';
-import { ExecutionBudget, ExecutionContext, ExecutionTrace, MemoryExecutionTracer } from '@repo/shared';
+import { ExecutionBudget, ExecutionContext, ExecutionTrace, MemoryExecutionTracer } from '@api-platform/shared';
 import {
   AIProvider,
   Capability,
@@ -24,8 +24,6 @@ import {
   StandardResponse,
   TaskHint,
 } from '@api-platform/shared';
-import { promisify } from 'node:util';
-import type { Job } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import { getModelTraits } from '@api-platform/shared';
 
@@ -98,6 +96,7 @@ const providerCircuit = new ProviderCircuitBreaker(
 );
 
 /**
+  /**
  * `task` e uma pista opcional para o roteamento automatico de modelo
  * (packages/shared/model-router.ts): quando o job nao especifica `model`
  * explicito, cada provider candidato recebe o melhor modelo para aquela
@@ -108,7 +107,7 @@ async function runWithFallback<T>(
   registry: ProviderRegistry,
   capability: Capability,
   requested: string | undefined,
-  fn: (provider: AIProvider, routedModel: string | undefined) => Promise<import('@api-platform/shared').ProviderResult<T>>,
+  fn: (provider: AIProvider, routedModel: string | undefined) => Promise<any>,
   task?: TaskHint,
 ): Promise<StandardResponse<T>> {
   let lastError: unknown;
@@ -396,7 +395,7 @@ export const classificationProcessor: ProcessorFn = async (job, registry) => {
   const prompt =
     'Classifique o texto abaixo em exatamente UMA categoria permitida.\n' +
     `Categorias permitidas (copie uma delas sem alterar): ${data.categories.map((category) => `[${category}]`).join(', ')}.\n` +
-    'Não use sinônimos, explicações, pontuação ou categorias diferentes. Responda APENAS com o texto exato dentro de um dos colchetes.\n\n' +
+    'NÃƒÂ£o use sinÃƒÂ´nimos, explicaÃƒÂ§ÃƒÂµes, pontuaÃƒÂ§ÃƒÂ£o ou categorias diferentes. Responda APENAS com o texto exato dentro de um dos colchetes.\n\n' +
     data.text;
   const res = await runWithFallback(registry, 'chat', data.provider, async (provider, routedModel) => {
     const r = await provider.generateText({ prompt, model: data.model ?? routedModel });
@@ -524,7 +523,7 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
   // 3. Assemble final response
   // If the composer node exists, get its result. Otherwise get the last node.
   tracer.startComposer();
-  const resultsArr = Object.values(context.results || {});
+  const resultsArr = Object.values(context.results || {}) as any[];
   const successNodes = resultsArr.filter(r => r.status === 'success').length;
   const failNodes = resultsArr.filter(r => r.status === 'failed').length;
   
@@ -537,7 +536,7 @@ export const orchestratorProcessor: ProcessorFn = async (job, registry) => {
     finalResult = composerNode.result;
     finalStatus = 'success';
   } else if (resultsArr.length > 0) {
-    // Pegar o resultado do ultimo nó que teve sucesso
+    // Pegar o resultado do ultimo nÃƒÂ³ que teve sucesso
     const lastSuccess = [...resultsArr].reverse().find(r => r.status === 'success');
     if (lastSuccess) {
       finalResult = lastSuccess.result;
@@ -581,3 +580,5 @@ export const processors: Record<string, ProcessorFn> = {
   mission: missionProcessor,
   orchestrator: orchestratorProcessor,
 };
+
+
