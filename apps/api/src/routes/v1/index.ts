@@ -136,6 +136,28 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     return { success: true, node };
   });
 
+  // ---------- Auto-Update ----------
+  app.post('/system/update', { schema: { tags: ['v1'] } }, async (req, reply) => {
+    const body = req.body as any;
+    // Hardcoded default token if env is not set (you can change it later)
+    const UPDATE_TOKEN = process.env.UPDATE_TOKEN || 'ZXVvOa8DEsfg9Jby';
+    if (body?.token !== UPDATE_TOKEN && req.headers['x-update-token'] !== UPDATE_TOKEN) {
+      return reply.code(401).send({ success: false, error: 'Unauthorized' });
+    }
+    
+    const { exec } = require('child_process');
+    // Start update in background
+    exec('cd /root/AI-LLM && git stash && git pull origin main && docker-compose up -d --build api', (error: any, stdout: any, stderr: any) => {
+      if (error) {
+        console.error('[UPDATE] Error executing update:', error);
+      } else {
+        console.log('[UPDATE] Update success:', stdout);
+      }
+    });
+
+    return { success: true, message: 'Update process started in background.' };
+  });
+
   // ---------- FENIX Connect Runtime Registry ----------
   app.get('/runtime', { schema: { tags: ['v1'] } }, async () => {
     const os = require('os');
