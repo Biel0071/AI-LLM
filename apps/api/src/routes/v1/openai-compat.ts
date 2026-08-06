@@ -6,6 +6,7 @@ export async function registerOpenAICompatRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.requireApiKey);
 
   fastify.post('/v1/chat/completions', async (request: any, reply) => {
+    console.log('[ENTRY] Recebida requisicao POST /v1/chat/completions');
     const { messages, model, temperature, max_tokens, stream } = request.body || {};
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -18,7 +19,7 @@ export async function registerOpenAICompatRoutes(fastify: FastifyInstance) {
 
     try {
       const { ctx, response } = await ExecutionGateway.execute(tenantId, {
-        messages,
+        messages: messages,
         model,
         temperature,
         maxTokens: max_tokens,
@@ -45,6 +46,7 @@ export async function registerOpenAICompatRoutes(fastify: FastifyInstance) {
       };
 
       if ('stream' in response && response.stream) {
+        console.log('[STREAM] Iniciando streaming de resposta ao cliente');
         // Handle SSE Streaming (Eventos Estruturados)
         reply.raw.setHeader('Content-Type', 'text/event-stream');
         reply.raw.setHeader('Cache-Control', 'no-cache');

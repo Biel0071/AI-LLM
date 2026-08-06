@@ -8,6 +8,7 @@ import { reloadRegistry } from './services/ai.service';
 import { setupMetricsFetcher } from './services/metrics-fetcher.service';
 import { closeQueues } from './services/queue.service';
 import { startReversePoller, stopReversePoller } from './services/reverse-poller.service';
+import { startHealthCheckWorker, stopHealthCheckWorker } from './services/health-check.service';
 
 async function main(): Promise<void> {
   await bootstrap();
@@ -18,6 +19,7 @@ async function main(): Promise<void> {
   const close = async (signal: string) => {
     logger.info({ signal }, 'shutting down');
     stopReversePoller();
+    stopHealthCheckWorker();
     await app.close();
     await closeQueues();
     await prisma.$disconnect();
@@ -29,6 +31,7 @@ async function main(): Promise<void> {
 
   await app.listen({ port: env.PORT, host: env.HOST });
   startReversePoller();
+  startHealthCheckWorker();
   logger.info(`API Platform API rodando em http://${env.HOST}:${env.PORT} (docs em /docs)`);
 }
 

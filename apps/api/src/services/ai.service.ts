@@ -1,4 +1,4 @@
-﻿import {
+import {
   AIProvider,
   deterministicTextQuality,
   Capability,
@@ -34,13 +34,13 @@ export interface ExecuteContext {
   cache?: boolean;
 }
 
-const fallbackOrder = (process.env.FREE_PROVIDER_ORDER ??
-  'ollama,groq,gemini,cloudflare,openrouter,lmstudio')
+export const fallbackOrder = (process.env.FREE_PROVIDER_ORDER ??
+  'groq,openrouter,cloudflare,ollama,lmstudio')
   .split(',')
   .map((name) => name.trim())
   .filter(Boolean);
 const inFlight = new Map<string, Promise<ProviderResult<unknown>>>();
-const providerCircuit = new ProviderCircuitBreaker(
+export const providerCircuit = new ProviderCircuitBreaker(
   Math.max(1, Number(process.env.PROVIDER_FAILURE_THRESHOLD ?? 2)),
   Math.max(1_000, Number(process.env.PROVIDER_COOLDOWN_MS ?? 30_000)),
 );

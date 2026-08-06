@@ -172,7 +172,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // ---------- Rotas ----------
   const { registerOpenAICompatRoutes } = require('./routes/v1/openai-compat');
+  const { registerAnthropicCompatRoutes } = require('./routes/v1/anthropic-compat');
   await app.register(registerOpenAICompatRoutes);
+  await app.register(registerAnthropicCompatRoutes);
   await app.register(v1Routes, { prefix: '/v1' });
   await app.register(adminRoutes, { prefix: '/admin' });
 

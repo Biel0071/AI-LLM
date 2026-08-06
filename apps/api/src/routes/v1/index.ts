@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
@@ -27,6 +27,7 @@ import {
   visionSchema,
 } from '@api-platform/shared';
 import { execute, registry } from '../../services/ai.service';
+import { ExecutionGateway } from '../../services/execution-gateway.service';
 import { enqueue, enqueueAndWait, enqueueWithTiming, QueueName, queueStats, queueTiming } from '../../services/queue.service';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
@@ -36,7 +37,6 @@ import { reverseRoutes } from './reverse';
 import { memoryRoutes } from './memory';
 import { ConfigurationCenterService } from '../../services/configuration-center.service';
 import { SyncCenterService } from '../../services/sync-center.service';
-import { registerPromptTemplateRoutes } from './prompt-templates';
 
 function resolveJobQueue(type: string, payload: Record<string, unknown>): QueueName {
   if (type === 'text' && payload.task === 'vision') {
@@ -115,7 +115,6 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
 
   await app.register(reverseRoutes);
   await app.register(memoryRoutes);
-  await app.register(registerPromptTemplateRoutes);
 
   // ---------- Centro de ConfiguraÃ§Ã£o e Sync de Cluster ----------
   app.get('/config', { schema: { tags: ['v1'] } }, async () => {
@@ -180,9 +179,21 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   });
 
   // ---------- Chat ----------
-  app.post('/chat', { config: rlText, schema: { tags: ['v1'] } }, async (req) => {
+  app.post('/chat', { config: rlText, schema: { tags: ['v1'] } }, async (req, reply) => {
+    console.log('[ENTRY] Recebida requisicao POST /v1/chat');
     const body = chatSchema.parse(req.body);
-    return execute('chat', body, (p) => p.chat(body) as any, { tenantId: req.auth?.tenantId, projectId: req.auth?.projectId });
+    const tenantId = req.auth?.tenantId || 'default_tenant';
+    
+    // Agora OBRIGATORIAMENTE passa pelo ExecutionGateway que tem o router/compressor/retry
+    try {
+      const { response } = await ExecutionGateway.execute(tenantId, body, body.stream);
+      return reply.send(response);
+    } catch (err: any) {
+      req.log.error(err);
+      return reply.status(err.status || 500).send({
+        error: { message: err.message, code: err.status || 500 }
+      });
+    }
   });
 
   // ---------- Imagem ----------
@@ -492,20 +503,20 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
   app.get('/models', { schema: { tags: ['v1'] } }, async (req) => {
     const { provider } = req.query as { provider?: string };
     const openAiData = [
-      { id: 'auto', object: 'model', created: 1700000000, owned_by: 'api-platform' },
-      { id: 'claude-3-5-sonnet-20241022', object: 'model', created: 1700000000, owned_by: 'anthropic' },
-      { id: 'claude-3-opus-20240229', object: 'model', created: 1700000000, owned_by: 'anthropic' },
-      { id: 'claude-3-haiku-20240307', object: 'model', created: 1700000000, owned_by: 'anthropic' },
-      { id: 'gpt-4o', object: 'model', created: 1700000000, owned_by: 'openai' },
-      { id: 'qwen2.5:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
-      { id: 'llama3:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
-      { id: 'deepseek-r1:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
-      { id: 'llama-3.3-70b-versatile', object: 'model', created: 1700000000, owned_by: 'groq' },
-      { id: 'meta-llama/llama-3.1-70b-instruct', object: 'model', created: 1700000000, owned_by: 'openrouter' },
-      { id: 'gemma2:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
-      { id: 'mistral:latest', object: 'model', created: 1700000000, owned_by: 'ollama' },
-      { id: 'whisper-large-v3', object: 'model', created: 1700000000, owned_by: 'whisper' },
-      { id: 'sdxl_turbo', object: 'model', created: 1700000000, owned_by: 'comfyui' },
+      { id: 'auto', object: 'model', type: 'model', created: 1700000000, owned_by: 'api-platform' },
+      { id: 'claude-3-5-sonnet-20241022', object: 'model', type: 'model', created: 1700000000, owned_by: 'anthropic' },
+      { id: 'claude-3-opus-20240229', object: 'model', type: 'model', created: 1700000000, owned_by: 'anthropic' },
+      { id: 'claude-3-haiku-20240307', object: 'model', type: 'model', created: 1700000000, owned_by: 'anthropic' },
+      { id: 'gpt-4o', object: 'model', type: 'model', created: 1700000000, owned_by: 'openai' },
+      { id: 'qwen2.5:latest', object: 'model', type: 'model', created: 1700000000, owned_by: 'ollama' },
+      { id: 'llama3:latest', object: 'model', type: 'model', created: 1700000000, owned_by: 'ollama' },
+      { id: 'deepseek-r1:latest', object: 'model', type: 'model', created: 1700000000, owned_by: 'ollama' },
+      { id: 'llama-3.3-70b-versatile', object: 'model', type: 'model', created: 1700000000, owned_by: 'groq' },
+      { id: 'meta-llama/llama-3.1-70b-instruct', object: 'model', type: 'model', created: 1700000000, owned_by: 'openrouter' },
+      { id: 'gemma2:latest', object: 'model', type: 'model', created: 1700000000, owned_by: 'ollama' },
+      { id: 'mistral:latest', object: 'model', type: 'model', created: 1700000000, owned_by: 'ollama' },
+      { id: 'whisper-large-v3', object: 'model', type: 'model', created: 1700000000, owned_by: 'whisper' },
+      { id: 'sdxl_turbo', object: 'model', type: 'model', created: 1700000000, owned_by: 'comfyui' },
     ];
     const providers = provider ? [registry.get(provider)] : registry.list();
     const results = await Promise.all(

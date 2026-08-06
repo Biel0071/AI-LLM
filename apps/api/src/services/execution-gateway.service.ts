@@ -1,4 +1,4 @@
-﻿import { 
+import { 
   ExecutionContext, 
   ExecutionDecision, 
   ExecutionMode, 
@@ -12,8 +12,8 @@ import { cacheService } from './cache.service';
 import { ComplexityAnalyzer } from './complexity.analyzer';
 import { FastIntentClassifier } from './intent.classifier';
 import { ExecutionDispatcher } from './dispatcher.service';
-import { ProviderRegistry } from '@api-platform/shared';
-import { registry } from './ai.service';
+import { ProviderRegistry, compressContext, getModelTraits } from '@api-platform/shared';
+import { registry, providerCircuit, fallbackOrder } from './ai.service';
 import { enqueueAndWait } from './queue.service';
 import crypto from 'crypto';
 
@@ -23,30 +23,123 @@ export interface Executor {
 
 export class DirectExecutor implements Executor {
   async execute(ctx: ExecutionContext, input: any): Promise<ProviderResponse<any>> {
+    console.log('[GATEWAY] Entrando no DirectExecutor com input:', { model: input.model, messageCount: input.messages?.length });
     let capability: Capability = 'chat';
     if (ctx.complexity?.requiresVision) capability = 'vision';
     
-    const provider = await registry.resolve(capability);
+    let targetModel = input.model || 'auto';
+    const originalMessages = input.messages || [];
+    let currentMessages = [...originalMessages];
     
-    if (!provider) {
-      throw new ProviderError('System', 'No provider available for the required capability', 'NO_PROVIDER', 503);
+    // Lista de fallback baseada na ordem configurada
+    let cascade = [...fallbackOrder];
+    
+    // Se o cliente especificou um provedor no modelo, tentamos ele primeiro
+    const modelParts = targetModel.split('/');
+    if (modelParts.length > 1 && cascade.includes(modelParts[0])) {
+      cascade = [modelParts[0], ...cascade.filter(p => p !== modelParts[0])];
     }
     
-    const start = Date.now();
-    try {
-      let res: ProviderResponse<any>;
-      if (capability === 'vision') {
-        res = await provider.vision(input);
-      } else {
-        res = await provider.chat(input);
+    const errors: any[] = [];
+    
+    for (const providerName of cascade) {
+      console.log(`[FALLBACK] Tentando provider: ${providerName}`);
+      if (providerCircuit.isOpen(providerName)) {
+         ctx.trace?.push({ type: 'circuit_breaker', timestamp: Date.now(), metadata: { providerName } } as any);
+         continue; // Provider ignorado porque esta unhealthy
       }
       
-      ctx.metrics = { ...ctx.metrics, } as any;
-      return res;
-    } catch (error) {
-      ctx.metrics = { ...ctx.metrics, } as any;
-      throw error;
+      let provider;
+      try {
+        provider = await registry.resolve(capability, providerName);
+      } catch {
+        continue;
+      }
+      
+      if (!provider) continue;
+
+      // Fase 1 & Fase 2: Smart Context Manager & Token Manager
+      const modelTraits = getModelTraits(targetModel);
+      const maxContext = modelTraits.maxContextTokens || 8192;
+      
+      console.log(`[COMPRESS] Iniciando compressao. Max Context: ${maxContext}`);
+      // Comprimir contexto dinamicamente para os limites do provedor atual na cascata
+      const { compressedMessages, compressedSystem } = compressContext(currentMessages, maxContext, input.system);
+      console.log(`[COMPRESSED] Contexto comprimido. Total msgs: ${compressedMessages.length}`);
+      
+      const providerInput = {
+        ...input,
+        messages: compressedMessages,
+        system: compressedSystem
+      };
+
+      const start = Date.now();
+      
+      // Fase 4: Rate Limit Manager (Retry com Exponential Backoff)
+      let attempt = 0;
+      const maxAttempts = 3;
+      let successResponse: ProviderResponse<any> | null = null;
+      
+      while (attempt < maxAttempts) {
+        console.log(`[PROVIDER] Fazendo chamada ao provedor ${providerName} (attempt ${attempt + 1})`);
+        try {
+          if (capability === 'vision') {
+            successResponse = await provider.vision(providerInput);
+          } else {
+            successResponse = await provider.chat(providerInput);
+          }
+          providerCircuit.recordSuccess(providerName);
+          break; // Sucesso!
+        } catch (error: any) {
+          const status = error?.status || error?.statusCode;
+          const msgString = error?.message?.toLowerCase() || '';
+          const isRateLimit = status === 429 || msgString.includes('rate limit') || msgString.includes('too many requests');
+          const isPayloadTooLarge = status === 413 || msgString.includes('too large') || msgString.includes('maximum context length');
+          
+          if (isRateLimit) {
+             console.log(`[RETRY] Rate limit detectado no provider ${providerName}`);
+             attempt++;
+             if (attempt >= maxAttempts) {
+                providerCircuit.recordFailure(providerName);
+                errors.push(error);
+                break;
+             }
+             // Backoff exponencial: 1s, 2s, 4s, 8s...
+             const retryAfter = error?.headers?.['retry-after'] ? parseInt(error.headers['retry-after']) * 1000 : Math.pow(2, attempt - 1) * 1000;
+             ctx.trace?.push({ type: 'rate_limit_retry', timestamp: Date.now(), metadata: { providerName, attempt, retryAfter } } as any);
+             await new Promise(r => setTimeout(r, retryAfter));
+             continue; // Tenta de novo no mesmo provedor
+          }
+          
+          if (isPayloadTooLarge) {
+             console.log(`[RETRY] Payload Too Large detectado no provider ${providerName}. Ajustando limite.`);
+             // Reduz o maxContext em 20% e tenta comprimir de novo
+             const reducedLimit = Math.floor(maxContext * 0.8);
+             const recompressed = compressContext(currentMessages, reducedLimit, input.system);
+             providerInput.messages = recompressed.compressedMessages;
+             providerInput.system = recompressed.compressedSystem;
+             ctx.trace?.push({ type: 'context_compressed', timestamp: Date.now(), metadata: { providerName, reducedLimit } } as any);
+             attempt++;
+             continue; 
+          }
+          
+          // Outros erros
+          providerCircuit.recordFailure(providerName);
+          errors.push(error);
+          break; // Vai para o proximo fallback provider
+        }
+      }
+      
+      if (successResponse) {
+        console.log(`[FINISHED] Sucesso com provedor ${providerName}`);
+        ctx.metrics = { ...ctx.metrics, provider: providerName, retries: attempt } as any;
+        return successResponse;
+      }
     }
+    
+    // Fallback total falhou
+    ctx.metrics = { ...ctx.metrics, } as any;
+    throw new ProviderError('gateway', 'All providers in fallback chain failed.', 'ALL_FAILED', 502, { errors });
   }
 }
 
