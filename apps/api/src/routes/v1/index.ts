@@ -208,7 +208,7 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     
     // Agora OBRIGATORIAMENTE passa pelo ExecutionGateway que tem o router/compressor/retry
     try {
-      const { response } = await ExecutionGateway.execute(tenantId, body, body.stream);
+      const { response } = await ExecutionGateway.execute(tenantId, body, (body as any).stream || false);
       return reply.send(response);
     } catch (err: any) {
       req.log.error(err);

@@ -139,7 +139,9 @@ export class DirectExecutor implements Executor {
     
     // Fallback total falhou
     ctx.metrics = { ...ctx.metrics, } as any;
-    throw new ProviderError('gateway', 'All providers in fallback chain failed.', 'ALL_FAILED', 502, { errors });
+    const gatewayError = new ProviderError('gateway', 'All providers in fallback chain failed.', 'ALL_FAILED', 502, false);
+    (gatewayError as any).errors = errors;
+    throw gatewayError;
   }
 }
 
