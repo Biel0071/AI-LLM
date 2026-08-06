@@ -67,8 +67,25 @@ export class DirectExecutor implements Executor {
       const { compressedMessages, compressedSystem } = compressContext(currentMessages, maxContext, input.system);
       console.log(`[COMPRESSED] Contexto comprimido. Total msgs: ${compressedMessages.length}`);
       
+      // Tratamento de modelos cruzados
+      let overrideModel = targetModel;
+      const t = targetModel.toLowerCase();
+      const isAnthropic = t.includes('claude');
+      const isOpenAI = t.includes('gpt');
+      
+      if (providerName === 'groq' && (isAnthropic || isOpenAI)) {
+        overrideModel = 'auto';
+      } else if (providerName === 'openai' && isAnthropic) {
+        overrideModel = 'auto';
+      } else if (providerName === 'anthropic' && isOpenAI) {
+        overrideModel = 'auto';
+      } else if (providerName === 'ollama') {
+        overrideModel = 'auto';
+      }
+
       const providerInput = {
         ...input,
+        model: overrideModel !== 'auto' ? overrideModel : undefined,
         messages: compressedMessages,
         system: compressedSystem
       };
